@@ -20,9 +20,19 @@ pub struct Skipped {
     pub reason: String,
 }
 
+/// One workarea row as the frontend's table displays it.
+#[derive(Serialize)]
+pub struct FileRow {
+    pub path: String,
+    pub name: String,
+    pub folder: String,
+    /// `None` when the file is currently missing/unreadable.
+    pub size: Option<u64>,
+}
+
 #[derive(Serialize)]
 pub struct AddResult {
-    pub files: Vec<String>,
+    pub files: Vec<FileRow>,
     pub skipped: Vec<Skipped>,
 }
 
@@ -47,8 +57,19 @@ pub struct ExportResult {
     pub problems: Vec<Problem>,
 }
 
-fn paths_as_strings(paths: &[PathBuf]) -> Vec<String> {
-    paths.iter().map(|p| p.display().to_string()).collect()
+fn rows(paths: &[PathBuf]) -> Vec<FileRow> {
+    paths
+        .iter()
+        .map(|p| FileRow {
+            path: p.display().to_string(),
+            name: basename(p),
+            folder: p
+                .parent()
+                .map(|d| d.display().to_string())
+                .unwrap_or_default(),
+            size: std::fs::metadata(p).ok().map(|m| m.len()),
+        })
+        .collect()
 }
 
 fn basename(path: &Path) -> String {
@@ -57,44 +78,74 @@ fn basename(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-/// Add files with text/binary screening. Binary and unreadable files are
-/// skipped (reported batched); paths already present are a no-op.
-#[tauri::command]
-pub fn add_files(state: State<'_, Workarea>, paths: Vec<String>) -> AddResult {
-    let mut files = state.0.lock().unwrap();
-    let mut skipped = Vec::new();
-    for raw in paths {
-        let path = PathBuf::from(&raw);
+/// Screen `paths` for text-ness and append the survivors, collecting skip
+/// reasons; paths already present are a no-op.
+fn screen_and_add(files: &mut Vec<PathBuf>, paths: Vec<PathBuf>, skipped: &mut Vec<Skipped>) {
+    for path in paths {
         if files.contains(&path) {
             continue;
         }
         match reading::read_file(&path) {
             Ok(FileContent::Text(_)) => files.push(path),
             Ok(FileContent::Binary) => skipped.push(Skipped {
-                path: raw,
+                path: path.display().to_string(),
                 reason: "binary file (contains NUL bytes)".into(),
             }),
             Err(e) => skipped.push(Skipped {
-                path: raw,
+                path: path.display().to_string(),
                 reason: e.to_string(),
             }),
         }
     }
+}
+
+/// Add files with text/binary screening. Binary and unreadable files are
+/// skipped (reported batched).
+#[tauri::command]
+pub fn add_files(state: State<'_, Workarea>, paths: Vec<String>) -> AddResult {
+    let mut files = state.0.lock().unwrap();
+    let mut skipped = Vec::new();
+    screen_and_add(
+        &mut files,
+        paths.into_iter().map(PathBuf::from).collect(),
+        &mut skipped,
+    );
     AddResult {
-        files: paths_as_strings(&files),
+        files: rows(&files),
         skipped,
     }
 }
 
+/// Add a folder's immediate-children regular files (sorted by name) with the
+/// same screening as `add_files`. Recursive import with a preview dialog is
+/// Phase 3.
 #[tauri::command]
-pub fn remove_file(state: State<'_, Workarea>, path: String) -> Vec<String> {
+pub fn add_folder(state: State<'_, Workarea>, path: String) -> Result<AddResult, String> {
+    let entries = std::fs::read_dir(&path).map_err(|e| format!("could not read folder: {e}"))?;
+    let mut children: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| p.is_file())
+        .collect();
+    children.sort();
+
     let mut files = state.0.lock().unwrap();
-    files.retain(|p| *p != Path::new(&path));
-    paths_as_strings(&files)
+    let mut skipped = Vec::new();
+    screen_and_add(&mut files, children, &mut skipped);
+    Ok(AddResult {
+        files: rows(&files),
+        skipped,
+    })
 }
 
 #[tauri::command]
-pub fn move_file(state: State<'_, Workarea>, path: String, op: MoveOp) -> Vec<String> {
+pub fn remove_file(state: State<'_, Workarea>, path: String) -> Vec<FileRow> {
+    let mut files = state.0.lock().unwrap();
+    files.retain(|p| *p != Path::new(&path));
+    rows(&files)
+}
+
+#[tauri::command]
+pub fn move_file(state: State<'_, Workarea>, path: String, op: MoveOp) -> Vec<FileRow> {
     let mut files = state.0.lock().unwrap();
     if let Some(i) = files.iter().position(|p| *p == Path::new(&path)) {
         let last = files.len() - 1;
@@ -106,13 +157,13 @@ pub fn move_file(state: State<'_, Workarea>, path: String, op: MoveOp) -> Vec<St
             _ => {}
         }
     }
-    paths_as_strings(&files)
+    rows(&files)
 }
 
 /// Replace the ordering wholesale (drag-reorder). Rejected unless `paths` is
 /// a permutation of the current list.
 #[tauri::command]
-pub fn set_order(state: State<'_, Workarea>, paths: Vec<String>) -> Result<Vec<String>, String> {
+pub fn set_order(state: State<'_, Workarea>, paths: Vec<String>) -> Result<Vec<FileRow>, String> {
     let mut files = state.0.lock().unwrap();
     let new: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
     let mut sorted_old = files.clone();
@@ -123,12 +174,12 @@ pub fn set_order(state: State<'_, Workarea>, paths: Vec<String>) -> Result<Vec<S
         return Err("reorder does not match current file set".into());
     }
     *files = new;
-    Ok(paths_as_strings(&files))
+    Ok(rows(&files))
 }
 
 #[tauri::command]
-pub fn get_files(state: State<'_, Workarea>) -> Vec<String> {
-    paths_as_strings(&state.0.lock().unwrap())
+pub fn get_files(state: State<'_, Workarea>) -> Vec<FileRow> {
+    rows(&state.0.lock().unwrap())
 }
 
 /// Generate the bundle in memory, best-effort. If problems occurred and

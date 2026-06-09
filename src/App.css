@@ -19,11 +19,6 @@ body {
   box-sizing: border-box;
 }
 
-.app.drag-over {
-  outline: 3px dashed #4a90d9;
-  outline-offset: -6px;
-}
-
 .toolbar {
   display: flex;
   gap: 0.5rem;
@@ -48,6 +43,32 @@ button:disabled {
   opacity: 0.5;
 }
 
+.export-btn {
+  margin-left: auto;
+  background: #5a9e6f;
+  border-color: #4c8a5f;
+  color: #fff;
+}
+
+.export-btn:hover:not(:disabled) {
+  background: #4f9163;
+}
+
+.remove-btn {
+  margin-right: 0.5rem;
+  padding: 0 0.3rem;
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  color: #b0b0b5;
+  cursor: default;
+}
+
+.remove-btn:hover:not(:disabled) {
+  background: none;
+  color: #d04040;
+}
+
 .empty-hint {
   flex: 1;
   display: flex;
@@ -57,37 +78,82 @@ button:disabled {
   font-size: 1.1rem;
 }
 
-.file-list {
+.file-table-wrap {
   flex: 1;
   overflow-y: auto;
-  margin: 0;
-  padding: 0.4rem;
-  list-style: none;
 }
 
-.file-list li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.4rem 0.6rem;
-  border-radius: 6px;
+/* Weighted column layout:
+   - Name never shrinks (min = max-content) and absorbs all slack (1fr).
+   - Folder takes its natural width when there's room, and is the first
+     column sacrificed under pressure (shrinks down to 6rem, ellipsized).
+   - Size always gets its natural width (it's tiny). */
+.file-table {
+  display: grid;
+  grid-template-columns:
+    minmax(max-content, 1fr)
+    minmax(6rem, max-content)
+    max-content;
 }
 
-.file-list li:hover {
-  background: #e8eef7;
+.ft-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
-.file-name {
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.file-dir {
-  color: #8a8a8e;
-  font-size: 0.85rem;
+.ft-row > div {
+  padding: 0.35rem 0.7rem;
+  border-bottom: 1px solid #eee;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ft-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f6f6f6;
+}
+
+.ft-header > div {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #666;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.ft-row:not(.ft-header):hover {
+  background: #e8eef7;
+}
+
+.ft-row.drop-target > div {
+  border-top: 2px solid #4a90d9;
+}
+
+.col-name {
+  font-weight: 500;
+}
+
+.col-folder {
+  color: #8a8a8e;
+  font-size: 0.9rem;
+}
+
+.col-size {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #666;
+}
+
+.ft-header .col-name,
+.ft-header .col-folder,
+.ft-header .col-size {
+  color: #666;
+  font-weight: 600;
+  font-size: 0.85rem;
 }
 
 .status {
@@ -95,7 +161,7 @@ button:disabled {
   border-top: 1px solid #ddd;
   background: #efefef;
   font-size: 0.85rem;
-  color: #555;
+  color: #333;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -195,6 +261,10 @@ button:disabled {
     border-color: #3a3a3a;
   }
 
+  .status {
+    color: #d6d6da;
+  }
+
   button {
     background: #333;
     border-color: #4a4a4a;
@@ -205,8 +275,26 @@ button:disabled {
     background: #3c4654;
   }
 
-  .file-list li:hover {
+  .ft-header {
+    background: #1f1f1f;
+  }
+
+  .ft-header > div {
+    border-color: #3a3a3a;
+    color: #aaa;
+  }
+
+  .ft-row > div {
+    border-color: #2e2e2e;
+  }
+
+  .ft-row:not(.ft-header):hover {
     background: #2e3947;
+  }
+
+  .col-size,
+  .col-folder {
+    color: #9a9aa0;
   }
 
   .context-menu,

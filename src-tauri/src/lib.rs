@@ -9,6 +9,7 @@ pub fn run() {
         .manage(state::Workarea::default())
         .invoke_handler(tauri::generate_handler![
             state::add_files,
+            state::add_folder,
             state::remove_file,
             state::move_file,
             state::set_order,

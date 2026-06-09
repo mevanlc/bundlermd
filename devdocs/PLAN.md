@@ -112,6 +112,13 @@ recents focuses A's window; theme change applies to both windows.
 
 ## Deferred / out of scope for v1
 
+- **OS drag'n'drop to add files** — Tauri's file-drop handling fights HTML5
+  drag-reorder in the file table, so external-drop-to-add is deferred
+  (`dragDropEnabled: false`); files are added via the Add Files… / Add Folder…
+  buttons instead. Revisit with a pointer-event-based reorder if drop-to-add
+  becomes a priority. (A basic non-recursive Add Folder… landed in Phase 1 as
+  a side effect; the Phase 3 preview dialog with the recursive option still
+  stands.)
 - Watching files with OS-level notifications instead of 1 s polling.
 - Streaming export (current design reads files into memory; acceptable under the 200 MB /
   250 MB limits).

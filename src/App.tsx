@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import "./App.css";
+
+interface FileRow {
+  path: string;
+  name: string;
+  folder: string;
+  size: number | null;
+}
 
 interface Skipped {
   path: string;
@@ -10,7 +16,7 @@ interface Skipped {
 }
 
 interface AddResult {
-  files: string[];
+  files: FileRow[];
   skipped: Skipped[];
 }
 
@@ -30,49 +36,33 @@ interface ContextMenuState {
   path: string;
 }
 
-function basename(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i >= 0 ? path.slice(i + 1) : path;
-}
-
-function dirname(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : "";
+function formatSize(size: number | null): string {
+  if (size === null) return "—";
+  if (size < 1024) return `${size} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = size;
+  let unit = "B";
+  for (const u of units) {
+    if (value < 1024) break;
+    value /= 1024;
+    unit = u;
+  }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${unit}`;
 }
 
 export default function App() {
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<FileRow[]>([]);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [problems, setProblems] = useState<Problem[] | null>(null);
   const [pendingExportPath, setPendingExportPath] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const [dragOver, setDragOver] = useState(false);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
   const dragIndex = useRef<number | null>(null);
 
-  const addPaths = useCallback(async (paths: string[]) => {
-    if (paths.length === 0) return;
-    const result = await invoke<AddResult>("add_files", { paths });
-    setFiles(result.files);
-    if (result.skipped.length > 0) setSkipped(result.skipped);
-  }, []);
-
   useEffect(() => {
-    invoke<string[]>("get_files").then(setFiles);
-    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
-      if (event.payload.type === "over") {
-        setDragOver(true);
-      } else if (event.payload.type === "drop") {
-        setDragOver(false);
-        void addPaths(event.payload.paths);
-      } else {
-        setDragOver(false);
-      }
-    });
-    return () => {
-      void unlisten.then((fn) => fn());
-    };
-  }, [addPaths]);
+    invoke<FileRow[]>("get_files").then(setFiles);
+  }, []);
 
   useEffect(() => {
     const close = () => setMenu(null);
@@ -84,17 +74,33 @@ export default function App() {
     };
   }, []);
 
-  async function browse() {
+  function applyAddResult(result: AddResult) {
+    setFiles(result.files);
+    if (result.skipped.length > 0) setSkipped(result.skipped);
+  }
+
+  async function browseFiles() {
     const picked = await open({ multiple: true, title: "Add Files to Bundle" });
-    if (picked) await addPaths(picked);
+    if (!picked || picked.length === 0) return;
+    applyAddResult(await invoke<AddResult>("add_files", { paths: picked }));
+  }
+
+  async function browseFolder() {
+    const picked = await open({ directory: true, title: "Add Folder Contents to Bundle" });
+    if (!picked) return;
+    try {
+      applyAddResult(await invoke<AddResult>("add_folder", { path: picked }));
+    } catch (e) {
+      setStatusMsg(String(e));
+    }
   }
 
   async function removeFile(path: string) {
-    setFiles(await invoke<string[]>("remove_file", { path }));
+    setFiles(await invoke<FileRow[]>("remove_file", { path }));
   }
 
   async function moveFile(path: string, op: "up" | "down" | "top" | "bottom") {
-    setFiles(await invoke<string[]>("move_file", { path, op }));
+    setFiles(await invoke<FileRow[]>("move_file", { path, op }));
   }
 
   async function runExport(outputPath: string, allowProblems: boolean) {
@@ -126,51 +132,85 @@ export default function App() {
     await runExport(outputPath, false);
   }
 
-  function onRowDragStart(index: number) {
-    dragIndex.current = index;
-  }
-
   async function onRowDrop(index: number) {
     const from = dragIndex.current;
     dragIndex.current = null;
+    setDropTarget(null);
     if (from === null || from === index) return;
     const next = [...files];
     const [moved] = next.splice(from, 1);
     next.splice(index, 0, moved);
     setFiles(next); // optimistic; backend echo below is authoritative
-    setFiles(await invoke<string[]>("set_order", { paths: next }));
+    setFiles(
+      await invoke<FileRow[]>("set_order", { paths: next.map((f) => f.path) })
+    );
   }
 
   return (
-    <main className={`app${dragOver ? " drag-over" : ""}`}>
+    <main className="app">
       <header className="toolbar">
-        <button onClick={browse}>Add Files…</button>
-        <button onClick={exportBundle} disabled={files.length === 0}>
+        <button onClick={browseFiles}>Add Files…</button>
+        <button onClick={browseFolder}>Add Folder…</button>
+        <button
+          className="export-btn"
+          onClick={exportBundle}
+          disabled={files.length === 0}
+        >
           Export Bundle…
         </button>
       </header>
 
       {files.length === 0 ? (
-        <div className="empty-hint">Drop files here, or use “Add Files…”</div>
+        <div className="empty-hint">Use “Add Files…” or “Add Folder…” to get started</div>
       ) : (
-        <ul className="file-list">
-          {files.map((path, i) => (
-            <li
-              key={path}
-              draggable
-              onDragStart={() => onRowDragStart(i)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => void onRowDrop(i)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ x: e.clientX, y: e.clientY, path });
-              }}
-            >
-              <span className="file-name">{basename(path)}</span>
-              <span className="file-dir">{dirname(path)}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="file-table-wrap">
+          <div className="file-table" role="table">
+            <div className="ft-row ft-header" role="row">
+              <div className="col-name" role="columnheader">Name</div>
+              <div className="col-folder" role="columnheader">Folder</div>
+              <div className="col-size" role="columnheader">Size</div>
+            </div>
+            {files.map((file, i) => (
+              <div
+                key={file.path}
+                role="row"
+                className={`ft-row${dropTarget === i ? " drop-target" : ""}`}
+                draggable
+                onDragStart={() => {
+                  dragIndex.current = i;
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDropTarget(i);
+                }}
+                onDragLeave={() => setDropTarget((t) => (t === i ? null : t))}
+                onDragEnd={() => setDropTarget(null)}
+                onDrop={() => void onRowDrop(i)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY, path: file.path });
+                }}
+              >
+                <div className="col-name" role="cell">
+                  <button
+                    className="remove-btn"
+                    title="Remove from bundle"
+                    onClick={() => void removeFile(file.path)}
+                  >
+                    ✕
+                  </button>
+                  {file.name}
+                </div>
+                <div className="col-folder" role="cell" title={file.folder}>
+                  {file.folder}
+                </div>
+                <div className="col-size" role="cell">
+                  {formatSize(file.size)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {statusMsg && <footer className="status">{statusMsg}</footer>}
