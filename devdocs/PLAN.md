@@ -51,12 +51,12 @@ file reported in the problems dialog.
 - `.bmd` JSON schema with version field; load/save in Rust with serde.
 - Save / Save As / Open / New; dirty tracking; close-with-unsaved-changes prompt
   (typical document-editor UX per PRD).
-- Project Settings dialog: Title, Introduction, Output newlines (Unix / Windows /
+- Project Settings dialog: Introduction, Output newlines (Unix / Windows /
   Platform Default) — all wired into export.
-- Path Presentation setting: Absolute, Relative-to-fixed-location, and **Smart Relative**
-  (common-prefix-under-`.bmd`-dir rule plus the progressive basename-disambiguation
-  algorithm). Smart Relative is the algorithmically interesting piece — implement it as a
-  pure function with table-driven tests before wiring it to the UI.
+- Path Presentation setting: Absolute and **Smart** (common-prefix-under-`.bmd`-dir rule plus
+  the progressive basename-disambiguation algorithm). It governs both how paths are stored in
+  the `.bmd` and how they're rendered in the bundle. Smart is the algorithmically interesting
+  piece — implement it as a pure function with table-driven tests before wiring it to the UI.
 - TOC internal links (GitHub anchor rules), behind the project setting.
 
 **Exit criteria**: full save/open/saveas/dirty round-trip; a project with colliding

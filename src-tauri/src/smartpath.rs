@@ -15,10 +15,6 @@ pub fn presented_paths(
 ) -> Vec<String> {
     match presentation {
         PathPresentation::Absolute => paths.iter().map(|p| display(p)).collect(),
-        PathPresentation::Fixed { location } => paths
-            .iter()
-            .map(|p| relative_to(p, Path::new(location)).unwrap_or_else(|| display(p)))
-            .collect(),
         PathPresentation::Smart => smart(paths, project_dir),
     }
 }
@@ -41,39 +37,6 @@ fn segments(p: &Path) -> Vec<String> {
 fn suffix(segs: &[String], n: usize) -> String {
     let start = segs.len().saturating_sub(n);
     segs[start..].join("/")
-}
-
-/// Relative path from `base` to `path` (lexical; `..` components allowed).
-/// `None` when there is no common root (e.g. different Windows drives).
-fn relative_to(path: &Path, base: &Path) -> Option<String> {
-    let mut path_comps = path.components().peekable();
-    let mut base_comps = base.components().peekable();
-    // Both must share a root for a lexical relative path to exist.
-    while let (Some(p), Some(b)) = (path_comps.peek(), base_comps.peek()) {
-        if p == b {
-            path_comps.next();
-            base_comps.next();
-        } else {
-            break;
-        }
-    }
-    let ups = base_comps
-        .filter(|c| matches!(c, Component::Normal(_)))
-        .count();
-    let rest: Vec<_> = path_comps.collect();
-    if rest.iter().any(|c| !matches!(c, Component::Normal(_))) {
-        // Diverged before consuming the roots: no common root.
-        return None;
-    }
-    let mut parts: Vec<String> = std::iter::repeat_n("..".to_string(), ups).collect();
-    parts.extend(
-        rest.iter()
-            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
-    );
-    if parts.is_empty() {
-        return Some(".".into());
-    }
-    Some(parts.join("/"))
 }
 
 /// Smart Relative per the PRD:
@@ -190,18 +153,5 @@ mod tests {
     fn absolute_mode() {
         let got = presented_paths(&paths(&["/a/b.txt"]), &PathPresentation::Absolute, None);
         assert_eq!(got, ["/a/b.txt"]);
-    }
-
-    #[test]
-    fn fixed_mode_relative_and_updirs() {
-        let pres = PathPresentation::Fixed {
-            location: "/base/dir".into(),
-        };
-        let got = presented_paths(
-            &paths(&["/base/dir/sub/f.txt", "/base/other/g.txt", "/f2.txt"]),
-            &pres,
-            None,
-        );
-        assert_eq!(got, ["sub/f.txt", "../other/g.txt", "../../f2.txt"]);
     }
 }

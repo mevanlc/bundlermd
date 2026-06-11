@@ -81,7 +81,6 @@ fn export_disambiguates_collisions_with_toc_links() {
         make("readme.txt", "hello\n"),
     ];
     let settings = ProjectSettings {
-        title: "Collide".into(),
         toc_links: true,
         path_presentation: PathPresentation::Smart,
         ..Default::default()

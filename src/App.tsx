@@ -12,13 +12,9 @@ interface FileRow {
   size: number | null;
 }
 
-type PathPresentation =
-  | { mode: "smart" }
-  | { mode: "absolute" }
-  | { mode: "fixed"; location: string };
+type PathPresentation = { mode: "smart" } | { mode: "absolute" };
 
 interface ProjectSettings {
-  title: string;
   introduction: string;
   newlines: "unix" | "windows" | "platform";
   path_presentation: PathPresentation;
@@ -113,6 +109,64 @@ const PREDEFINED: Record<string, { label: string; accel: string; cmd: string }> 
   select_all: { label: "Select All", accel: "CmdOrCtrl+A", cmd: "selectAll" },
 };
 
+/** The <li> rows of one menu's dropdown, shared by the in-window menubar and
+ *  the macOS toolbar Project button. `fire` runs an action id and closes the
+ *  menu; predefined Edit items go through document.execCommand. */
+function MenuItems({
+  items,
+  recents,
+  fire,
+}: {
+  items: MenuItemDef[];
+  recents: string[];
+  fire: (id: string) => void;
+}) {
+  return (
+    <>
+      {items.map((item, j) => {
+        if ("separator" in item) return <li key={j} className="separator" />;
+        if ("predefined" in item) {
+          const p = PREDEFINED[item.predefined];
+          return (
+            <li key={j} onClick={() => document.execCommand(p.cmd)}>
+              <span>{p.label}</span>
+              <span className="accel">{formatAccel(p.accel)}</span>
+            </li>
+          );
+        }
+        if ("recents" in item) {
+          const empty = recents.length === 0;
+          return (
+            <li key={j} className={`has-sub${empty ? " disabled" : ""}`}>
+              <span>{item.label}</span>
+              <span className="accel">▸</span>
+              {!empty && (
+                <ul className="mb-submenu">
+                  {recents.map((r) => (
+                    <li key={r} onClick={() => fire(`recent:${r}`)}>
+                      <span className="recent-path">{r}</span>
+                    </li>
+                  ))}
+                  <li className="separator" />
+                  <li onClick={() => fire("clear_recents")}>
+                    <span>Clear Menu</span>
+                  </li>
+                </ul>
+              )}
+            </li>
+          );
+        }
+        return (
+          <li key={j} onClick={() => fire(item.id)}>
+            <span>{item.label}</span>
+            <span className="accel">{formatAccel(item.accelerator)}</span>
+          </li>
+        );
+      })}
+    </>
+  );
+}
+
 /** Optional in-window menubar (App Settings: "Native + in-window"), rendered
  *  from the same src/menu.json as the native menu and dispatching through
  *  the same action ids. */
@@ -159,51 +213,61 @@ function MenuBar({ dispatch }: { dispatch: (id: string) => void }) {
           </button>
           {openIdx === i && (
             <ul className="mb-drop">
-              {menu.items.map((item, j) => {
-                if ("separator" in item) return <li key={j} className="separator" />;
-                if ("predefined" in item) {
-                  const p = PREDEFINED[item.predefined];
-                  return (
-                    <li key={j} onClick={() => document.execCommand(p.cmd)}>
-                      <span>{p.label}</span>
-                      <span className="accel">{formatAccel(p.accel)}</span>
-                    </li>
-                  );
-                }
-                if ("recents" in item) {
-                  const empty = recents.length === 0;
-                  return (
-                    <li key={j} className={`has-sub${empty ? " disabled" : ""}`}>
-                      <span>{item.label}</span>
-                      <span className="accel">▸</span>
-                      {!empty && (
-                        <ul className="mb-submenu">
-                          {recents.map((r) => (
-                            <li key={r} onClick={() => fire(`recent:${r}`)}>
-                              <span className="recent-path">{r}</span>
-                            </li>
-                          ))}
-                          <li className="separator" />
-                          <li onClick={() => fire("clear_recents")}>
-                            <span>Clear Menu</span>
-                          </li>
-                        </ul>
-                      )}
-                    </li>
-                  );
-                }
-                return (
-                  <li key={j} onClick={() => fire(item.id)}>
-                    <span>{item.label}</span>
-                    <span className="accel">{formatAccel(item.accelerator)}</span>
-                  </li>
-                );
-              })}
+              <MenuItems items={menu.items} recents={recents} fire={fire} />
             </ul>
           )}
         </div>
       ))}
     </nav>
+  );
+}
+
+/** macOS-only toolbar dropdown for the Project menu. On macOS the native menu
+ *  bar sits at the top of the screen, away from the window, so this gives a
+ *  quick in-window affordance. Renders the "Project" menu from src/menu.json. */
+function ProjectMenuButton({ dispatch }: { dispatch: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [recents, setRecents] = useState<string[]>([]);
+  const projectMenu = MENU_DEF.menus.find((m) => m.label === "Project");
+
+  useEffect(() => {
+    if (open) void invoke<string[]>("get_recents").then(setRecents);
+  }, [open]);
+
+  useEffect(() => {
+    const close = () => setOpen(false);
+    window.addEventListener("click", close);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+    };
+  }, []);
+
+  if (!projectMenu) return null;
+
+  function fire(id: string) {
+    setOpen(false);
+    dispatch(id);
+  }
+
+  return (
+    <div className="project-menu">
+      <button
+        className={open ? "open" : ""}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen(!open);
+        }}
+      >
+        Project ▾
+      </button>
+      {open && (
+        <ul className="mb-drop">
+          <MenuItems items={projectMenu.items} recents={recents} fire={fire} />
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -247,7 +311,6 @@ function InfoTip({ lines }: { lines: string[] }) {
 const EMPTY_PROJECT: ProjectView = {
   files: [],
   settings: {
-    title: "",
     introduction: "",
     newlines: "unix",
     path_presentation: { mode: "smart" },
@@ -293,6 +356,9 @@ export default function App() {
   const [closePromptOpen, setClosePromptOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
+  // macOS convention is a bare document title in the titlebar (the app name
+  // already lives in the menu bar); other platforms keep the app-name suffix.
+  const [isMacOS, setIsMacOS] = useState(false);
   const dragIndex = useRef<number | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -347,10 +413,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    void invoke<string>("host_os").then((os) => setIsMacOS(os === "macos"));
+  }, []);
+
+  useEffect(() => {
     const name = projectDisplayName(project);
     const dirtyMark = project.dirty ? " •" : "";
-    void getCurrentWindow().setTitle(`${name}${dirtyMark} — BundlerMD`);
-  }, [project.project_path, project.dirty]);
+    const suffix = isMacOS ? "" : " — BundlerMD";
+    void getCurrentWindow().setTitle(`${name}${dirtyMark}${suffix}`);
+  }, [project.project_path, project.dirty, isMacOS]);
 
   // Missing-file detection: re-poll the backend (which stats every file)
   // about once a second; only re-render when something actually changed.
@@ -579,6 +650,7 @@ export default function App() {
     <main className="app">
       {appSettings?.menu_rendering === "both" && <MenuBar dispatch={dispatchMenu} />}
       <header className="toolbar">
+        {isMacOS && <ProjectMenuButton dispatch={dispatchMenu} />}
         <button onClick={() => void browseFiles()}>Add Files…</button>
         <button onClick={() => void browseFolder()}>Add Folder…</button>
         <button
@@ -676,16 +748,6 @@ export default function App() {
             <h2>Project Settings</h2>
 
             <label className="field">
-              <span>Title</span>
-              <input
-                type="text"
-                value={draft.title}
-                placeholder="(project file name)"
-                onChange={(e) => setSettingsDraft({ ...draft, title: e.target.value })}
-              />
-            </label>
-
-            <label className="field">
               <span>Introduction</span>
               <textarea
                 rows={5}
@@ -701,10 +763,9 @@ export default function App() {
                 Path presentation
                 <InfoTip
                   lines={[
-                    "How file paths appear in the bundle's TOC and headers.",
-                    "Smart Relative: files in the project file's folder are shown relative to it; everything else gets the shortest unambiguous name.",
+                    "How file paths are stored in the project file and shown in the bundle's TOC and headers.",
+                    "Smart: files in the project file's folder are stored and shown relative to it (so the project travels with its files); everything else stays absolute, shown as the shortest unambiguous name.",
                     "Absolute paths: the full path, always.",
-                    "Relative to a fixed location: paths shown relative to a folder you specify (may include ../).",
                   ]}
                 />
               </span>
@@ -712,39 +773,12 @@ export default function App() {
                 value={draft.path_presentation.mode}
                 onChange={(e) => {
                   const mode = e.target.value as PathPresentation["mode"];
-                  setSettingsDraft({
-                    ...draft,
-                    path_presentation:
-                      mode === "fixed"
-                        ? {
-                            mode,
-                            location:
-                              draft.path_presentation.mode === "fixed"
-                                ? draft.path_presentation.location
-                                : "",
-                          }
-                        : { mode },
-                  });
+                  setSettingsDraft({ ...draft, path_presentation: { mode } });
                 }}
               >
-                <option value="smart">Smart Relative (default)</option>
+                <option value="smart">Smart (default)</option>
                 <option value="absolute">Absolute paths</option>
-                <option value="fixed">Relative to a fixed location</option>
               </select>
-              {draft.path_presentation.mode === "fixed" && (
-                <input
-                  type="text"
-                  className="fixed-location"
-                  placeholder="/path/to/base"
-                  value={draft.path_presentation.location}
-                  onChange={(e) =>
-                    setSettingsDraft({
-                      ...draft,
-                      path_presentation: { mode: "fixed", location: e.target.value },
-                    })
-                  }
-                />
-              )}
             </label>
 
             <label className="field">

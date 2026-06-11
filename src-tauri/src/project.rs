@@ -1,27 +1,13 @@
 //! Project settings and the `.bmd` on-disk format (versioned JSON).
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::bundle::Newline;
 
-/// Current `.bmd` format version. Bump on breaking changes.
-pub const PROJECT_VERSION: u32 = 1;
-
-const FORMAT_NAME: &str = "BundlerMD Project";
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct FormatTag {
-    name: String,
-    version: u32,
-}
-
-impl FormatTag {
-    fn current() -> Self {
-        Self { name: FORMAT_NAME.into(), version: PROJECT_VERSION }
-    }
-}
+const SCHEMA_URL: &str =
+    "https://raw.githubusercontent.com/mevanlc/bundlermd/refs/heads/main/schemas/project-v1.json";
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -48,21 +34,22 @@ impl NewlineSetting {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+/// How file paths are both stored in the `.bmd` and rendered in the bundle.
+/// - `Smart`: files under the project file's directory are stored/shown
+///   relative to it; everything else is absolute (rendered as the shortest
+///   unambiguous name).
+/// - `Absolute`: always store and show full absolute paths.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[serde(tag = "mode", rename_all = "lowercase")]
 pub enum PathPresentation {
     #[default]
     Smart,
     Absolute,
-    Fixed {
-        location: String,
-    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct ProjectSettings {
-    pub title: String,
     pub introduction: String,
     pub newlines: NewlineSetting,
     pub path_presentation: PathPresentation,
@@ -72,7 +59,6 @@ pub struct ProjectSettings {
 impl Default for ProjectSettings {
     fn default() -> Self {
         Self {
-            title: String::new(),
             introduction: String::new(),
             newlines: NewlineSetting::Unix,
             path_presentation: PathPresentation::Smart,
@@ -81,11 +67,12 @@ impl Default for ProjectSettings {
     }
 }
 
-/// The `.bmd` file contents.
+/// The `.bmd` file contents. The `$schema` field identifies the format version
+/// and enables editor validation against the published JSON Schema.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProjectFile {
-    #[serde(rename = "__format__")]
-    format: FormatTag,
+    #[serde(rename = "$schema", default)]
+    schema: String,
     pub files: Vec<String>,
     pub last_export: Option<String>,
     #[serde(default)]
@@ -98,21 +85,13 @@ impl ProjectFile {
         last_export: Option<String>,
         settings: ProjectSettings,
     ) -> Self {
-        Self { format: FormatTag::current(), files, last_export, settings }
+        Self { schema: SCHEMA_URL.into(), files, last_export, settings }
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("could not read project file: {e}"))?;
-        let file: ProjectFile =
-            serde_json::from_str(&text).map_err(|e| format!("invalid project file: {e}"))?;
-        if file.format.version > PROJECT_VERSION {
-            return Err(format!(
-                "project file version {} is newer than this BundlerMD understands (max {})",
-                file.format.version, PROJECT_VERSION
-            ));
-        }
-        Ok(file)
+        serde_json::from_str(&text).map_err(|e| format!("invalid project file: {e}"))
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -122,20 +101,50 @@ impl ProjectFile {
     }
 }
 
-/// Title fallback chain from the PRD: project title, else .bmd basename
-/// (stem), else the export output's stem.
-pub fn effective_title(settings: &ProjectSettings, project_path: Option<&Path>, output: &Path) -> String {
-    if !settings.title.is_empty() {
-        return settings.title.clone();
-    }
+/// Bundle title, derived from the filename: `.bmd` stem → export output stem →
+/// "Bundle". (There is no title setting; the project's name is its filename.)
+pub fn effective_title(project_path: Option<&Path>, output: &Path) -> String {
     let stem = |p: &Path| p.file_stem().map(|s| s.to_string_lossy().into_owned());
-    project_path.and_then(stem)
+    project_path
+        .and_then(stem)
         .or_else(|| stem(output))
         .unwrap_or_else(|| "Bundle".into())
 }
 
 pub fn project_dir(project_path: Option<&Path>) -> Option<PathBuf> {
     project_path.and_then(Path::parent).map(Path::to_path_buf)
+}
+
+/// On-disk form of a workarea path. Files living under `project_dir` (the
+/// `.bmd` file's directory) are stored relative to it, forward-slashed so the
+/// project stays portable across platforms; files elsewhere keep their
+/// absolute path.
+pub fn stored_path(path: &Path, project_dir: &Path) -> String {
+    if project_dir.as_os_str().is_empty() {
+        return path.display().to_string();
+    }
+    match path.strip_prefix(project_dir) {
+        Ok(rel) => rel
+            .components()
+            .filter_map(|c| match c {
+                Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/"),
+        Err(_) => path.display().to_string(),
+    }
+}
+
+/// Resolve a stored workarea path back to absolute. Relative entries are joined
+/// to `project_dir`; absolute entries are returned unchanged.
+pub fn resolve_stored(stored: &str, project_dir: &Path) -> PathBuf {
+    let p = Path::new(stored);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        project_dir.join(p)
+    }
 }
 
 #[cfg(test)]
@@ -150,12 +159,9 @@ mod tests {
             vec!["/a/b.txt".into(), "/c/d.txt".into()],
             Some("/out.md".into()),
             ProjectSettings {
-                title: "T".into(),
                 introduction: "Intro".into(),
                 newlines: NewlineSetting::Platform,
-                path_presentation: PathPresentation::Fixed {
-                    location: "/base".into(),
-                },
+                path_presentation: PathPresentation::Absolute,
                 toc_links: true,
             },
         );
@@ -167,29 +173,15 @@ mod tests {
     }
 
     #[test]
-    fn magic_is_written() {
+    fn schema_url_is_written() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("magic.bmd");
+        let path = dir.path().join("schema.bmd");
         ProjectFile::new(vec![], None, ProjectSettings::default())
             .save(&path)
             .unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains(r#""__format__""#));
-        assert!(text.contains(r#""name": "BundlerMD Project""#));
-        assert!(text.contains(r#""version": 1"#));
-    }
-
-    #[test]
-    fn future_version_is_rejected() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("future.bmd");
-        std::fs::write(
-            &path,
-            r#"{"__format__": {"name": "BundlerMD Project", "version": 999}, "files": [], "last_export": null}"#,
-        )
-        .unwrap();
-        let err = ProjectFile::load(&path).unwrap_err();
-        assert!(err.contains("newer"));
+        assert!(text.contains(r#""$schema""#));
+        assert!(text.contains(SCHEMA_URL));
     }
 
     #[test]
@@ -198,7 +190,7 @@ mod tests {
         let path = dir.path().join("min.bmd");
         std::fs::write(
             &path,
-            r#"{"__format__": {"name": "BundlerMD Project", "version": 1}, "files": ["/x.txt"], "last_export": null}"#,
+            format!(r#"{{"$schema": "{SCHEMA_URL}", "files": ["/x.txt"], "last_export": null}}"#),
         )
         .unwrap();
         let loaded = ProjectFile::load(&path).unwrap();
@@ -206,15 +198,39 @@ mod tests {
     }
 
     #[test]
+    fn stored_path_relativizes_under_project_dir() {
+        let dir = Path::new("/proj");
+        // Under the project dir (directly and nested): stored relative.
+        assert_eq!(stored_path(Path::new("/proj/a.txt"), dir), "a.txt");
+        assert_eq!(stored_path(Path::new("/proj/src/main.rs"), dir), "src/main.rs");
+        // Outside the project dir: stored absolute.
+        assert_eq!(
+            stored_path(Path::new("/elsewhere/x.txt"), dir),
+            "/elsewhere/x.txt"
+        );
+        // A sibling sharing a name prefix is not "under" the dir.
+        assert_eq!(
+            stored_path(Path::new("/project-x/y.txt"), dir),
+            "/project-x/y.txt"
+        );
+    }
+
+    #[test]
+    fn resolve_stored_round_trip() {
+        let dir = Path::new("/proj");
+        for abs in ["/proj/a.txt", "/proj/src/main.rs", "/elsewhere/x.txt"] {
+            let stored = stored_path(Path::new(abs), dir);
+            assert_eq!(resolve_stored(&stored, dir), PathBuf::from(abs));
+        }
+    }
+
+    #[test]
     fn effective_title_fallbacks() {
-        let s = |t: &str| ProjectSettings {
-            title: t.into(),
-            ..Default::default()
-        };
         let out = Path::new("/tmp/Out File.md");
         let proj = PathBuf::from("/p/My Proj.bmd");
-        assert_eq!(effective_title(&s("Custom"), Some(&proj), out), "Custom");
-        assert_eq!(effective_title(&s(""), Some(&proj), out), "My Proj");
-        assert_eq!(effective_title(&s(""), None, out), "Out File");
+        // .bmd stem wins; without a project, the output stem; "Bundle" as last resort.
+        assert_eq!(effective_title(Some(&proj), out), "My Proj");
+        assert_eq!(effective_title(None, out), "Out File");
+        assert_eq!(effective_title(None, Path::new("/")), "Bundle");
     }
 }

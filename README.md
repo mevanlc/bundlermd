@@ -79,14 +79,10 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
 
 ```json
 {
-  "__format__": {
-    "name": "BundlerMD Project",
-    "version": 1
-  },
-  "files": ["/abs/path/file1.rs", "/abs/path/lib/helper.py"],
+  "$schema": "https://raw.githubusercontent.com/mevanlc/bundlermd/refs/heads/main/schemas/project-v1.json",
+  "files": ["src/file1.rs", "lib/helper.py", "/outside/project/shared.rs"],
   "last_export": "/abs/path/bundle.md",
   "settings": {
-    "title": "",
     "introduction": "",
     "newlines": "unix",
     "path_presentation": { "mode": "smart" },
@@ -95,7 +91,7 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
 }
 ```
 
-`path_presentation.mode` is `"smart"`, `"absolute"`, or `"fixed"` (with a `"location"` field).
+`path_presentation.mode` is `"smart"` (files under the project directory stored/shown relative to it, others absolute) or `"absolute"` (always full paths).
 
 ## License
 

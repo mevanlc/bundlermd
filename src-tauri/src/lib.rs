@@ -57,6 +57,7 @@ pub fn run() {
             state::save_project,
             state::open_project,
             state::export_bundle,
+            state::host_os,
             store::get_app_settings,
             store::set_app_settings,
             store::get_recents,

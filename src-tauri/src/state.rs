@@ -11,7 +11,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 
 use crate::bundle::{self, BundleFile};
-use crate::project::{effective_title, project_dir, ProjectFile, ProjectSettings};
+use crate::project::{
+    effective_title, project_dir, resolve_stored, stored_path, PathPresentation, ProjectFile,
+    ProjectSettings,
+};
 use crate::reading::{self, FileContent};
 use crate::smartpath::presented_paths;
 use crate::store::GlobalStore;
@@ -381,6 +384,14 @@ pub fn new_project(window: tauri::Window, state: State<'_, Workareas>) -> Projec
     })
 }
 
+/// The OS the app is running on (`std::env::consts::OS`, e.g. "macos",
+/// "windows", "linux"). The frontend uses it for platform-conventional UI such
+/// as the titlebar text.
+#[tauri::command]
+pub fn host_os() -> &'static str {
+    std::env::consts::OS
+}
+
 static WINDOW_SEQ: AtomicUsize = AtomicUsize::new(1);
 
 /// Open a fresh window with an empty Untitled project.
@@ -412,8 +423,21 @@ pub fn save_project(
             .map(PathBuf::from)
             .or_else(|| project.project_path.clone())
             .ok_or("no project file path; use Save As")?;
+        // Path presentation governs storage too: in Smart mode, files under
+        // the .bmd's directory are stored relative to it so the project travels
+        // with its files; in Absolute mode everything is stored absolute.
+        let dir = target.parent();
+        let smart = matches!(project.settings.path_presentation, PathPresentation::Smart);
+        let stored_files = project
+            .files
+            .iter()
+            .map(|p| match dir {
+                Some(d) if smart => stored_path(p, d),
+                _ => p.display().to_string(),
+            })
+            .collect();
         let file = ProjectFile::new(
-            project.files.iter().map(|p| p.display().to_string()).collect(),
+            stored_files,
             project.last_export.as_ref().map(|p| p.display().to_string()),
             project.settings.clone(),
         );
@@ -456,9 +480,19 @@ pub fn open_project(
     }
 
     let pf = ProjectFile::load(&project_path)?;
+    // Relative entries resolve against the .bmd's directory; absolute ones are
+    // taken as-is (mirrors `stored_path` at save time).
+    let dir = project_path.parent().map(Path::to_path_buf);
     let view = state.with(window.label(), |project| {
         *project = Project {
-            files: pf.files.iter().map(PathBuf::from).collect(),
+            files: pf
+                .files
+                .iter()
+                .map(|s| match dir.as_deref() {
+                    Some(d) => resolve_stored(s, d),
+                    None => PathBuf::from(s),
+                })
+                .collect(),
             settings: pf.settings,
             last_export: pf.last_export.map(PathBuf::from),
             project_path: Some(project_path),
@@ -571,7 +605,7 @@ pub fn generate_bundle(
         }
     }
 
-    let title = effective_title(settings, project_path, output);
+    let title = effective_title(project_path, output);
     let markdown = bundle::assemble(
         &title,
         &settings.introduction,

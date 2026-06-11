@@ -20,7 +20,9 @@ A project does not need to be created, saved, or opened in order to export a bun
 - A project can be saved-to / opened-from a `.bmd` project file.
 - The `.bmd` format is JSON and includes a format-version field.
 - A `.bmd` stores:
-  - The absolute paths of the files added to the workarea, in order.
+  - The paths of the files added to the workarea, in order. Files under the `.bmd` file's
+    directory (or a descendant) are stored relative to it so the project travels with its
+    files; files elsewhere are stored absolute.
   - The absolute path of the last export output file.
   - All project settings (see below). New project settings will be added over the course of
     development.
@@ -32,21 +34,18 @@ A project does not need to be created, saved, or opened in order to export a bun
 
 Accessed via a **Project Settings...** button which opens a dialog.
 
-- **Title** — single-line text. Used as the bundle's top-level heading; falls back to the
-  `.bmd` file's basename when empty.
 - **Introduction** — multiline text. Emitted near the top of the bundle. When empty, a blank
   line is left where the text would have appeared.
-- **Path Presentation** — controls how file paths are rendered in the bundle's table of
-  contents and per-file headers. Radio buttons:
-  - **(o) Smart Relative** (default):
-    - Files living under the directory containing the `.bmd` file are shown relative to that
-      directory.
-    - All other files are shown as a bare basename — unless two or more files share a
-      basename, in which case each member of the ambiguous set is disambiguated by
-      progressively prepending path segments (deepest segment of the dirname first) until the
-      set is unambiguous.
-  - **( ) Absolute paths**
-  - **( ) Relative to a fixed location** — with a text field for the location.
+- **Path Presentation** — controls how file paths are both stored in the `.bmd` and rendered
+  in the bundle's table of contents and per-file headers. Radio buttons:
+  - **(o) Smart** (default):
+    - Files living under the directory containing the `.bmd` file are stored and shown
+      relative to that directory (so the project travels with its files).
+    - All other files are stored absolute and shown as a bare basename — unless two or more
+      files share a basename, in which case each member of the ambiguous set is disambiguated
+      by progressively prepending path segments (deepest segment of the dirname first) until
+      the set is unambiguous.
+  - **( ) Absolute paths** — every file is stored and shown as a full absolute path.
 - **Generate internal links in Table of Contents** — checkbox. Links use GitHub's
   anchor-generation rules for heading-to-fragment formatting/escaping.
 - **Output newlines** — `(o) Always Unix` `( ) Always Windows` `( ) Platform Default`.
@@ -82,7 +81,7 @@ The exported file is always BOMless UTF-8.
 Structure (pseudo-Mustache; heading depths are part of the format):
 
 `````markdown
-# {{ project.title || project_basename }}
+# {{ project_basename || output_basename }}
 
 {{ project.introduction }}
 

@@ -125,6 +125,17 @@ body {
   background: #efefef;
 }
 
+/* macOS-only Project dropdown in the toolbar: a normal toolbar button that
+   anchors the shared .mb-drop menu. */
+.project-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.project-menu > button.open {
+  background: #f0f6ff;
+}
+
 button {
   font: inherit;
   padding: 0.35rem 0.9rem;
@@ -483,12 +494,6 @@ fieldset.field {
   margin-right: 0.4rem;
 }
 
-.fixed-location {
-  margin-top: 0.3rem;
-  margin-left: 1.4rem;
-  width: calc(100% - 1.4rem) !important;
-}
-
 .modal-buttons {
   display: flex;
   justify-content: flex-end;
@@ -603,7 +608,8 @@ fieldset.field {
   }
 
   .mb-menu > button:hover,
-  .mb-menu > button.open {
+  .mb-menu > button.open,
+  .project-menu > button.open {
     background: #3c4654;
   }
 

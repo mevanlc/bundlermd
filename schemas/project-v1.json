@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/mevanlc/bundlermd/refs/heads/main/schemas/project-v1.json",
+  "title": "BundlerMD Project",
+  "description": "A BundlerMD project file (.bmd). Stores the file list, settings, and last export path for a bundle.",
+  "type": "object",
+  "required": ["$schema", "files", "last_export"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://raw.githubusercontent.com/mevanlc/bundlermd/refs/heads/main/schemas/project-v1.json"
+    },
+    "files": {
+      "type": "array",
+      "description": "Paths of the files in the bundle, in workarea order. Files under the project file's directory are stored relative to it (forward-slashed); files elsewhere are absolute.",
+      "items": { "type": "string" }
+    },
+    "last_export": {
+      "description": "Absolute path of the last exported bundle file, or null.",
+      "type": ["string", "null"]
+    },
+    "settings": {
+      "$ref": "#/$defs/ProjectSettings"
+    }
+  },
+  "$defs": {
+    "ProjectSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "introduction": {
+          "type": "string",
+          "description": "Text emitted after the title and before the Table of Contents.",
+          "default": ""
+        },
+        "newlines": {
+          "type": "string",
+          "enum": ["unix", "windows", "platform"],
+          "default": "unix",
+          "description": "Output newline style: unix (LF), windows (CRLF), or platform default."
+        },
+        "path_presentation": {
+          "description": "How file paths are stored in this file and rendered in the bundle's TOC and section headers. 'smart' stores/shows files under the project directory relative to it and others absolute; 'absolute' always uses full paths.",
+          "type": "object",
+          "required": ["mode"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": { "type": "string", "enum": ["smart", "absolute"] }
+          }
+        },
+        "toc_links": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether TOC entries link to their sections via GitHub-style anchors."
+        }
+      }
+    }
+  }
+}
