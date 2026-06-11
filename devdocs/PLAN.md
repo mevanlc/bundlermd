@@ -7,11 +7,11 @@ records the architectural decisions the PRD leaves open.
 
 - **Stack**: Tauri 2 + Rust backend; React + TypeScript + Vite frontend.
 - **Source of truth lives in Rust.** The project model (file list, order, settings,
-  dirty flag, association with a `.bmdp` path) is owned by the Rust side, keyed by window.
+  dirty flag, association with a `.bmd` path) is owned by the Rust side, keyed by window.
   The frontend is a view/controller that calls commands and re-renders from state-change
   events. This keeps export, persistence, and dirty-tracking logic in one place and testable
   without a webview.
-- **All file I/O in Rust**: reading/probing added files, binary detection, `.bmdp`
+- **All file I/O in Rust**: reading/probing added files, binary detection, `.bmd`
   load/save, export generation. The frontend never touches the filesystem directly (native
   drag'n'drop file paths come through Tauri's drop events).
 - **Export is a pure function** in Rust: `(project state, file contents) → bundle string +
@@ -38,7 +38,7 @@ The PRD's "core workflow", no project persistence.
     links yet), per-file H2 sections.
   - Backtick fence sizing (longest run + 1, min 3).
   - Newline normalization (hardcoded Always Unix in this phase).
-  - Path presentation: bare basenames only in this phase (Smart Relative needs a `.bmdp`
+  - Path presentation: bare basenames only in this phase (Smart Relative needs a `.bmd`
     location anyway).
 - Export error handling: best-effort generation, problems dialog with Save anyway / Cancel.
 
@@ -48,13 +48,13 @@ file reported in the problems dialog.
 
 ### Phase 2 — Projects
 
-- `.bmdp` JSON schema with version field; load/save in Rust with serde.
+- `.bmd` JSON schema with version field; load/save in Rust with serde.
 - Save / Save As / Open / New; dirty tracking; close-with-unsaved-changes prompt
   (typical document-editor UX per PRD).
 - Project Settings dialog: Title, Introduction, Output newlines (Unix / Windows /
   Platform Default) — all wired into export.
 - Path Presentation setting: Absolute, Relative-to-fixed-location, and **Smart Relative**
-  (common-prefix-under-`.bmdp`-dir rule plus the progressive basename-disambiguation
+  (common-prefix-under-`.bmd`-dir rule plus the progressive basename-disambiguation
   algorithm). Smart Relative is the algorithmically interesting piece — implement it as a
   pure function with table-driven tests before wiring it to the UI.
 - TOC internal links (GitHub anchor rules), behind the project setting.
@@ -84,6 +84,10 @@ two broken files offers Save anyway and the output is correct minus exactly thos
 - Recents (12 entries, global, persisted).
 - App Settings dialog: theme (Dark/Light/System), max total export size, max individual
   file size.
+- Menu rendering preference: native only (default) vs. native + in-window menubar. Both
+  render from the shared `src/menu.json` definition (id/label/accelerator, nestable),
+  which the Rust side already compiles in; the in-window menubar imports the same file
+  and dispatches through the existing `"menu"` event handler table.
 
 **Exit criteria**: two projects open in two windows; re-opening project A from project B's
 recents focuses A's window; theme change applies to both windows.
@@ -100,7 +104,7 @@ recents focuses A's window; theme change applies to both windows.
 
 - **Rust unit tests** carry most of the weight, targeting the pure core: fence sizing,
   newline normalization, binary detection, Smart Relative disambiguation, GitHub anchor
-  generation, `.bmdp` (de)serialization including version handling, export assembly with
+  generation, `.bmd` (de)serialization including version handling, export assembly with
   injected problem cases.
 - **Rust integration tests** for command-level flows against temp directories: add/export
   round-trips, missing-file and permission-denied scenarios, size-limit enforcement.

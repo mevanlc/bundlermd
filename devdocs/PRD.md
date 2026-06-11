@@ -17,15 +17,15 @@ A project does not need to be created, saved, or opened in order to export a bun
 
 ## Projects
 
-- A project can be saved-to / opened-from a `.bmdp` project file.
-- The `.bmdp` format is JSON and includes a format-version field.
-- A `.bmdp` stores:
+- A project can be saved-to / opened-from a `.bmd` project file.
+- The `.bmd` format is JSON and includes a format-version field.
+- A `.bmd` stores:
   - The absolute paths of the files added to the workarea, in order.
   - The absolute path of the last export output file.
   - All project settings (see below). New project settings will be added over the course of
     development.
 - Save/Open/Save As/dirty-state UX: typical document-editor behavior, including the
-  save-changes prompt when closing a dirty workarea, with the create-new-`.bmdp` variant when
+  save-changes prompt when closing a dirty workarea, with the create-new-`.bmd` variant when
   the workarea isn't yet associated with a file.
 
 ### Project settings
@@ -33,13 +33,13 @@ A project does not need to be created, saved, or opened in order to export a bun
 Accessed via a **Project Settings...** button which opens a dialog.
 
 - **Title** — single-line text. Used as the bundle's top-level heading; falls back to the
-  `.bmdp` file's basename when empty.
+  `.bmd` file's basename when empty.
 - **Introduction** — multiline text. Emitted near the top of the bundle. When empty, a blank
   line is left where the text would have appeared.
 - **Path Presentation** — controls how file paths are rendered in the bundle's table of
   contents and per-file headers. Radio buttons:
   - **(o) Smart Relative** (default):
-    - Files living under the directory containing the `.bmdp` file are shown relative to that
+    - Files living under the directory containing the `.bmd` file are shown relative to that
       directory.
     - All other files are shown as a bare basename — unless two or more files share a
       basename, in which case each member of the ambiguous set is disambiguated by
@@ -82,7 +82,7 @@ The exported file is always BOMless UTF-8.
 Structure (pseudo-Mustache; heading depths are part of the format):
 
 `````markdown
-# {{ project.title || bmdp_basename }}
+# {{ project.title || project_basename }}
 
 {{ project.introduction }}
 
@@ -134,7 +134,7 @@ Workaround: add a BOM, or convert the file to UTF-8 / 7-bit ASCII.
   project: opening an already-open project focuses its existing window, and any operation that
   would associate one project with more than one window is blocked with an informative
   message.
-- The app remembers the 12 most recently opened/saved `.bmdp` files.
+- The app remembers the 12 most recently opened/saved `.bmd` files.
 
 ### App settings
 

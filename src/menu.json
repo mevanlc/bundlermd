@@ -1,0 +1,30 @@
+{
+  "menus": [
+    {
+      "label": "Project",
+      "items": [
+        { "id": "new", "label": "New", "accelerator": "CmdOrCtrl+N" },
+        { "id": "new_window", "label": "New Window", "accelerator": "Shift+CmdOrCtrl+N" },
+        { "id": "open", "label": "Open…", "accelerator": "CmdOrCtrl+O" },
+        { "label": "Open Recent", "recents": true },
+        { "separator": true },
+        { "id": "save", "label": "Save", "accelerator": "CmdOrCtrl+S" },
+        { "id": "save_as", "label": "Save As…", "accelerator": "Shift+CmdOrCtrl+S" },
+        { "separator": true },
+        { "id": "export", "label": "Export Bundle…", "accelerator": "CmdOrCtrl+E" }
+      ]
+    },
+    {
+      "label": "Edit",
+      "items": [
+        { "predefined": "undo" },
+        { "predefined": "redo" },
+        { "separator": true },
+        { "predefined": "cut" },
+        { "predefined": "copy" },
+        { "predefined": "paste" },
+        { "predefined": "select_all" }
+      ]
+    }
+  ]
+}

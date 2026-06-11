@@ -19,6 +19,104 @@ body {
   box-sizing: border-box;
 }
 
+.menubar {
+  display: flex;
+  padding: 0 0.4rem;
+  background: #efefef;
+  border-bottom: 1px solid #ddd;
+  font-size: 0.85rem;
+}
+
+.mb-menu {
+  position: relative;
+}
+
+.mb-menu > button {
+  border: none;
+  background: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.mb-menu > button:hover,
+.mb-menu > button.open {
+  background: #dcdcdc;
+}
+
+.mb-drop,
+.mb-submenu {
+  position: absolute;
+  z-index: 150;
+  min-width: 13rem;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.mb-drop {
+  top: 100%;
+  left: 0;
+  border-top-left-radius: 0;
+}
+
+.mb-drop li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 5px;
+  white-space: nowrap;
+  position: relative;
+}
+
+.mb-drop li:hover {
+  background: #4a90d9;
+  color: #fff;
+}
+
+.mb-drop li.separator,
+.mb-drop li.separator:hover {
+  height: 1px;
+  margin: 0.3rem 0.5rem;
+  padding: 0;
+  background: #ddd;
+}
+
+.mb-drop .accel {
+  color: #999;
+}
+
+.mb-drop li:hover > .accel {
+  color: #dce9f9;
+}
+
+.mb-drop li.disabled,
+.mb-drop li.disabled:hover {
+  background: none;
+  color: #aaa;
+}
+
+.mb-submenu {
+  display: none;
+  left: calc(100% - 0.4rem);
+  top: -0.3rem;
+}
+
+.has-sub:hover > .mb-submenu {
+  display: block;
+}
+
+.mb-submenu .recent-path {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .toolbar {
   display: flex;
   gap: 0.5rem;
@@ -41,6 +139,12 @@ button:hover:not(:disabled) {
 
 button:disabled {
   opacity: 0.5;
+}
+
+.gear-btn {
+  font-size: 1.05rem;
+  padding: 0.25rem 0.55rem;
+  line-height: 1;
 }
 
 .export-btn {
@@ -135,6 +239,14 @@ button:disabled {
 
 .col-name {
   font-weight: 500;
+}
+
+/* File currently missing/unreadable on disk (cosmetic; export re-checks are
+   the functional gate). */
+.ft-row.missing .col-name,
+.ft-row.missing .col-folder,
+.ft-row.missing .col-size {
+  color: #c0392b;
 }
 
 .col-folder {
@@ -242,6 +354,141 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.settings-modal {
+  width: 28rem;
+}
+
+.folder-preview-modal {
+  width: 30rem;
+}
+
+.folder-preview-path code {
+  font-size: 0.85rem;
+  user-select: text;
+}
+
+.preview-count,
+.preview-empty {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.preview-list {
+  max-height: 14rem;
+  overflow-y: auto;
+  margin: 0.4rem 0;
+  padding: 0.4rem 0.6rem;
+  list-style: none;
+  font-size: 0.85rem;
+  font-family: ui-monospace, Menlo, monospace;
+  background: #f3f3f3;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+
+.preview-list li {
+  padding: 0.1rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field {
+  display: block;
+  margin-bottom: 0.8rem;
+}
+
+.field > span,
+.field legend {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 0.25rem;
+}
+
+fieldset.field {
+  border: none;
+  margin: 0 0 0.8rem;
+  padding: 0;
+}
+
+.field select {
+  display: block;
+  width: 100%;
+  font: inherit;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+.info-tip {
+  position: relative;
+  display: inline-block;
+  margin-left: 0.35rem;
+  color: #4a90d9;
+  font-weight: 400;
+  cursor: default;
+}
+
+.info-pop {
+  position: fixed;
+  z-index: 300;
+  width: 19rem;
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.35;
+  color: #222;
+  background: #fffbe8;
+  border: 1px solid #d8cfa0;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.info-pop span {
+  display: block;
+}
+
+.info-pop span + span {
+  margin-top: 0.3rem;
+}
+
+.field input[type="text"],
+.field input[type="number"],
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.radio {
+  display: block;
+  margin: 0.15rem 0;
+}
+
+.radio input {
+  margin-right: 0.4rem;
+}
+
+.fixed-location {
+  margin-top: 0.3rem;
+  margin-left: 1.4rem;
+  width: calc(100% - 1.4rem) !important;
+}
+
 .modal-buttons {
   display: flex;
   justify-content: flex-end;
@@ -303,11 +550,76 @@ button:disabled {
     border-color: #444;
   }
 
+  .field input[type="text"],
+  .field input[type="number"],
+  .field textarea,
+  .field select {
+    background: #1f1f1f;
+    border-color: #4a4a4a;
+  }
+
+  .info-pop {
+    color: #eee;
+    background: #3a3a30;
+    border-color: #5a5645;
+  }
+
+  .field > span,
+  .field legend {
+    color: #aaa;
+  }
+
   .context-menu li.separator {
     background: #444;
   }
 
   .problem-list .reason {
     color: #ff6b6b;
+  }
+
+  .ft-row.missing .col-name,
+  .ft-row.missing .col-folder,
+  .ft-row.missing .col-size {
+    color: #ff6b6b;
+  }
+
+  .preview-list {
+    background: #1f1f1f;
+    border-color: #4a4a4a;
+  }
+
+  .preview-count,
+  .preview-empty {
+    color: #aaa;
+  }
+
+  .menubar {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+  }
+
+  .mb-menu > button {
+    color: #eee;
+  }
+
+  .mb-menu > button:hover,
+  .mb-menu > button.open {
+    background: #3c4654;
+  }
+
+  .mb-drop,
+  .mb-submenu {
+    background: #2c2c2e;
+    border-color: #444;
+  }
+
+  .mb-drop li.separator,
+  .mb-drop li.separator:hover {
+    background: #444;
+  }
+
+  .mb-drop li.disabled,
+  .mb-drop li.disabled:hover {
+    color: #777;
   }
 }

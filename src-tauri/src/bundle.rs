@@ -56,15 +56,33 @@ pub struct BundleFile {
 }
 
 /// Assemble the export per the PRD format. `title` falls back upstream
-/// (project title, else .bmdp/output basename). An empty introduction leaves
-/// a blank line in its place.
-pub fn assemble(title: &str, introduction: &str, files: &[BundleFile], nl: Newline) -> String {
+/// (project title, else .bmd/output basename). An empty introduction leaves
+/// a blank line in its place. With `toc_links`, TOC entries link to the file
+/// headings via GitHub-style anchors.
+pub fn assemble(
+    title: &str,
+    introduction: &str,
+    files: &[BundleFile],
+    nl: Newline,
+    toc_links: bool,
+) -> String {
     let n = nl.as_str();
     let mut out = String::new();
     let push_line = |out: &mut String, line: &str| {
         out.push_str(line);
         out.push_str(n);
     };
+
+    // Anchors are unique per document, so feed every heading in order.
+    let mut slugger = crate::anchors::Slugger::new();
+    slugger.slug(title);
+    slugger.slug("Table of Contents");
+    let file_headings: Vec<String> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| format!("File {}: {}", i + 1, f.display))
+        .collect();
+    let file_anchors: Vec<String> = file_headings.iter().map(|h| slugger.slug(h)).collect();
 
     push_line(&mut out, &format!("# {}", title));
     push_line(&mut out, "");
@@ -78,14 +96,18 @@ pub fn assemble(title: &str, introduction: &str, files: &[BundleFile], nl: Newli
     push_line(&mut out, "");
     push_line(&mut out, "## Table of Contents");
     push_line(&mut out, "");
-    for file in files {
-        push_line(&mut out, &format!("- {}", file.display));
+    for (file, anchor) in files.iter().zip(&file_anchors) {
+        if toc_links {
+            push_line(&mut out, &format!("- [{}](#{})", file.display, anchor));
+        } else {
+            push_line(&mut out, &format!("- {}", file.display));
+        }
     }
 
-    for (i, file) in files.iter().enumerate() {
+    for (file, heading) in files.iter().zip(&file_headings) {
         let fence = fence_for(&file.content);
         push_line(&mut out, "");
-        push_line(&mut out, &format!("## File {}: {}", i + 1, file.display));
+        push_line(&mut out, &format!("## {}", heading));
         push_line(&mut out, "");
         push_line(&mut out, &fence);
         let content = normalize_newlines(&file.content, nl);
@@ -105,7 +127,10 @@ mod tests {
 
     #[test]
     fn normalize_mixed_to_unix() {
-        assert_eq!(normalize_newlines("a\r\nb\rc\nd", Newline::Unix), "a\nb\nc\nd");
+        assert_eq!(
+            normalize_newlines("a\r\nb\rc\nd", Newline::Unix),
+            "a\nb\nc\nd"
+        );
     }
 
     #[test]
@@ -150,7 +175,7 @@ mod tests {
 
     #[test]
     fn assemble_basic_structure() {
-        let out = assemble("My Title", "", &files(), Newline::Unix);
+        let out = assemble("My Title", "", &files(), Newline::Unix, false);
         let expected = "\
 # My Title
 
@@ -177,16 +202,34 @@ and crlf
 
     #[test]
     fn assemble_includes_introduction() {
-        let out = assemble("T", "Hello intro.", &files(), Newline::Unix);
+        let out = assemble("T", "Hello intro.", &files(), Newline::Unix, false);
         assert!(out.starts_with("# T\n\nHello intro.\n\n## Table of Contents\n"));
     }
 
     #[test]
     fn assemble_windows_newlines_throughout() {
-        let out = assemble("T", "", &files(), Newline::Windows);
+        let out = assemble("T", "", &files(), Newline::Windows, false);
         assert!(out.contains("## File 2: b.md\r\n"));
         assert!(out.contains("has ``` fence\r\nand crlf\r\n"));
         assert!(!normalize_newlines(&out, Newline::Unix).contains('\r'));
+    }
+
+    #[test]
+    fn assemble_toc_links_use_github_anchors() {
+        let f = vec![
+            BundleFile {
+                display: "src/config.json".into(),
+                content: "a".into(),
+            },
+            BundleFile {
+                display: "lib/config.json".into(),
+                content: "b".into(),
+            },
+        ];
+        let out = assemble("T", "", &f, Newline::Unix, true);
+        assert!(out.contains("- [src/config.json](#file-1-srcconfigjson)\n"));
+        assert!(out.contains("- [lib/config.json](#file-2-libconfigjson)\n"));
+        assert!(out.contains("## File 1: src/config.json\n"));
     }
 
     #[test]
@@ -195,7 +238,7 @@ and crlf
             display: "x".into(),
             content: "no trailing newline".into(),
         }];
-        let out = assemble("T", "", &f, Newline::Unix);
+        let out = assemble("T", "", &f, Newline::Unix, false);
         assert!(out.contains("no trailing newline\n```\n"));
     }
 }
