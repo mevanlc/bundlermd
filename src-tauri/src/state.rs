@@ -114,6 +114,13 @@ pub struct AddResult {
     pub skipped: Vec<Skipped>,
 }
 
+#[derive(Clone, Serialize)]
+pub struct FolderPreviewFile {
+    pub path: String,
+    pub importable: bool,
+    pub note: String,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MoveOp {
@@ -151,6 +158,33 @@ fn basename(path: &Path) -> String {
     path.file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string())
+}
+
+fn screen_import(path: &Path, total: &mut u64, limits: Limits) -> Option<String> {
+    // Check size before reading so an oversized file is never decoded.
+    let size = std::fs::metadata(path).ok().map(|m| m.len());
+    if let Some(size) = size {
+        if size > limits.max_file_bytes {
+            return Some(format!(
+                "exceeds the maximum file size ({})",
+                human_bytes(limits.max_file_bytes)
+            ));
+        }
+        if *total + size > limits.max_total_bytes {
+            return Some(format!(
+                "would push the bundle over the maximum total size ({})",
+                human_bytes(limits.max_total_bytes)
+            ));
+        }
+    }
+    match reading::read_file(path) {
+        Ok(FileContent::Text(_)) => {
+            *total += size.unwrap_or(0);
+            None
+        }
+        Ok(FileContent::Binary) => Some("Binary File".into()),
+        Err(e) => Some(e.to_string()),
+    }
 }
 
 impl Project {
@@ -199,44 +233,14 @@ impl Project {
             if self.files.contains(&path) {
                 continue;
             }
-            // Check size before reading so an oversized file is never decoded.
-            let size = std::fs::metadata(&path).ok().map(|m| m.len());
-            if let Some(size) = size {
-                if size > limits.max_file_bytes {
-                    skipped.push(Skipped {
-                        path: path.display().to_string(),
-                        reason: format!(
-                            "exceeds the maximum file size ({})",
-                            human_bytes(limits.max_file_bytes)
-                        ),
-                    });
-                    continue;
-                }
-                if total + size > limits.max_total_bytes {
-                    skipped.push(Skipped {
-                        path: path.display().to_string(),
-                        reason: format!(
-                            "would push the bundle over the maximum total size ({})",
-                            human_bytes(limits.max_total_bytes)
-                        ),
-                    });
-                    continue;
-                }
-            }
-            match reading::read_file(&path) {
-                Ok(FileContent::Text(_)) => {
-                    total += size.unwrap_or(0);
-                    self.files.push(path);
-                    added_any = true;
-                }
-                Ok(FileContent::Binary) => skipped.push(Skipped {
+            if let Some(reason) = screen_import(&path, &mut total, limits) {
+                skipped.push(Skipped {
                     path: path.display().to_string(),
-                    reason: "binary file".into(),
-                }),
-                Err(e) => skipped.push(Skipped {
-                    path: path.display().to_string(),
-                    reason: e.to_string(),
-                }),
+                    reason,
+                });
+            } else {
+                self.files.push(path);
+                added_any = true;
             }
         }
         if added_any {
@@ -274,11 +278,17 @@ pub fn add_files(
     )
 }
 
-/// List the regular files under a folder (sorted by path) for the add-folder
-/// preview dialog. No screening here — the confirmed list goes through
-/// `add_files`, which screens and batches the warnings.
+/// List regular files under a folder and prescreen them for the add-folder
+/// preview dialog. The confirmed list still goes through `add_files`, which
+/// repeats screening because files can change between preview and import.
 #[tauri::command]
-pub fn preview_folder(path: String, recursive: bool) -> Result<Vec<String>, String> {
+pub fn preview_folder(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    store: State<'_, GlobalStore>,
+    path: String,
+    recursive: bool,
+) -> Result<Vec<FolderPreviewFile>, String> {
     let root = PathBuf::from(&path);
     // Error only if the chosen folder itself is unreadable; unreadable
     // subfolders are skipped (their files will simply be absent).
@@ -307,7 +317,34 @@ pub fn preview_folder(path: String, recursive: bool) -> Result<Vec<String>, Stri
         }
     }
     files.sort();
-    Ok(files.iter().map(|p| p.display().to_string()).collect())
+    let settings = store.settings();
+    let limits = settings.limits();
+    Ok(state.with_default(
+        window.label(),
+        settings.default_project_settings,
+        |project| {
+            let mut total: u64 = project
+                .files
+                .iter()
+                .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+                .sum();
+            files
+                .iter()
+                .map(|path| {
+                    let note = if project.files.contains(path) {
+                        "Already Added".into()
+                    } else {
+                        screen_import(path, &mut total, limits).unwrap_or_default()
+                    };
+                    FolderPreviewFile {
+                        path: path.display().to_string(),
+                        importable: note.is_empty(),
+                        note,
+                    }
+                })
+                .collect()
+        },
+    ))
 }
 
 #[tauri::command]
@@ -445,7 +482,7 @@ pub fn new_window(app: tauri::AppHandle, store: State<'_, GlobalStore>) -> Resul
     let label = format!("main-{}", WINDOW_SEQ.fetch_add(1, Ordering::Relaxed));
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::default())
         .title("BundlerMD")
-        .inner_size(800.0, 800.0)
+        .inner_size(1024.0, 800.0)
         // Same rationale as dragDropEnabled: false in tauri.conf.json — the
         // OS drop handler fights HTML5 row drag-reorder.
         .disable_drag_drop_handler()

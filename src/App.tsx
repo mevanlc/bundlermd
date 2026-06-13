@@ -1,4 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -58,7 +72,8 @@ interface ContextMenuState {
 interface FolderPreviewState {
   folder: string;
   recursive: boolean;
-  files: string[];
+  files: FolderPreviewFile[];
+  selectedPath: string | null;
 }
 
 interface AppSettings {
@@ -67,6 +82,12 @@ interface AppSettings {
   max_total_bytes: number;
   menu_rendering: "native" | "both";
   default_project_settings: ProjectSettings;
+}
+
+interface FolderPreviewFile {
+  path: string;
+  importable: boolean;
+  note: string;
 }
 
 /** Mirrors the node shapes in src/menu.json (shared with the Rust side). */
@@ -83,6 +104,10 @@ interface MenuDef {
 const MENU_DEF = menuJson as unknown as MenuDef;
 
 const IS_MAC = navigator.platform.toUpperCase().includes("MAC");
+const NATURAL_PATH_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 function formatAccel(accelerator?: string): string {
   if (!accelerator) return "";
@@ -102,7 +127,10 @@ function formatAccel(accelerator?: string): string {
 }
 
 /** In-window stand-ins for the native Edit menu's predefined items. */
-const PREDEFINED: Record<string, { label: string; accel: string; cmd: string }> = {
+const PREDEFINED: Record<
+  string,
+  { label: string; accel: string; cmd: string }
+> = {
   undo: { label: "Undo", accel: "CmdOrCtrl+Z", cmd: "undo" },
   redo: { label: "Redo", accel: "Shift+CmdOrCtrl+Z", cmd: "redo" },
   cut: { label: "Cut", accel: "CmdOrCtrl+X", cmd: "cut" },
@@ -280,7 +308,10 @@ function InfoTip({ lines }: { lines: string[] }) {
     const r = e.currentTarget.getBoundingClientRect();
     // Anchor above the icon; clamp horizontally to the viewport.
     const width = 304; // 19rem
-    const x = Math.max(8, Math.min(r.left + r.width / 2 - width / 2, window.innerWidth - width - 8));
+    const x = Math.max(
+      8,
+      Math.min(r.left + r.width / 2 - width / 2, window.innerWidth - width - 8),
+    );
     setPos({ x, y: r.top - 8 });
   }
 
@@ -437,21 +468,193 @@ function projectDisplayName(view: ProjectView): string {
   return base.endsWith(".bmd") ? base.slice(0, -4) : base;
 }
 
+function importableCount(files: FolderPreviewFile[]): number {
+  return files.filter((file) => file.importable).length;
+}
+
+function folderPreviewTableWidth(files: FolderPreviewFile[]): string {
+  const longestPath = Math.max(4, ...files.map((file) => file.path.length));
+  return `calc(${longestPath}ch + 9rem)`;
+}
+
+function folderPreviewModalWidth(files: FolderPreviewFile[]): string {
+  const longestPath = Math.max(4, ...files.map((file) => file.path.length));
+  return `min(calc(${longestPath}ch + 12rem), 80vw)`;
+}
+
+function FolderPreviewTable({
+  files,
+  selectedPath,
+  setSelectedPath,
+  removeFile,
+}: {
+  files: FolderPreviewFile[];
+  selectedPath: string | null;
+  setSelectedPath: (path: string) => void;
+  removeFile: (path: string) => void;
+}) {
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "importable", desc: false },
+    { id: "path", desc: false },
+  ]);
+  const columns = useMemo<ColumnDef<FolderPreviewFile>[]>(
+    () => [
+      {
+        id: "remove",
+        header: "",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <button
+            className="remove-btn"
+            title="Remove from import"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeFile(row.original.path);
+            }}
+          >
+            ✕
+          </button>
+        ),
+      },
+      {
+        accessorKey: "importable",
+        header: "Importable",
+        sortingFn: (a, b) =>
+          Number(a.original.importable) - Number(b.original.importable),
+        cell: ({ row }) =>
+          row.original.importable ? (
+            "Yes"
+          ) : (
+            <>
+              No
+              <InfoTip lines={[row.original.note]} />
+            </>
+          ),
+      },
+      {
+        accessorKey: "path",
+        header: "Path",
+        sortingFn: (a, b) =>
+          NATURAL_PATH_COLLATOR.compare(a.original.path, b.original.path),
+        cell: ({ row }) => (
+          <span title={row.original.path}>{row.original.path}</span>
+        ),
+      },
+    ],
+    [removeFile],
+  );
+  const table = useReactTable({
+    data: files,
+    columns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableMultiSort: true,
+  });
+
+  return (
+    <div className="preview-table-wrap">
+      <table
+        className="preview-table"
+        style={{
+          width: folderPreviewTableWidth(files),
+        }}
+      >
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id}>
+              {headerGroup.headers.map((header) => {
+                const sorted = header.column.getIsSorted();
+                return (
+                  <th
+                    key={header.id}
+                    aria-label={
+                      header.column.id === "remove" ? "Remove" : undefined
+                    }
+                    aria-sort={
+                      sorted === "asc"
+                        ? "ascending"
+                        : sorted === "desc"
+                          ? "descending"
+                          : "none"
+                    }
+                  >
+                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                      <button
+                        className="preview-sort-btn"
+                        type="button"
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                        <span aria-hidden="true">
+                          {sorted === "asc"
+                            ? " ↑"
+                            : sorted === "desc"
+                              ? " ↓"
+                              : ""}
+                        </span>
+                      </button>
+                    ) : (
+                      flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {table.getRowModel().rows.map((row) => (
+            <tr
+              key={row.id}
+              className={selectedPath === row.original.path ? "selected" : ""}
+              onClick={() => setSelectedPath(row.original.path)}
+            >
+              {row.getVisibleCells().map((cell) => (
+                <td key={cell.id}>
+                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function App() {
   const [project, setProject] = useState<ProjectView>(EMPTY_PROJECT);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [problems, setProblems] = useState<Problem[] | null>(null);
-  const [pendingExportPath, setPendingExportPath] = useState<string | null>(null);
+  const [pendingExportPath, setPendingExportPath] = useState<string | null>(
+    null,
+  );
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const [settingsDraft, setSettingsDraft] = useState<ProjectSettings | null>(null);
-  const [folderPreview, setFolderPreview] = useState<FolderPreviewState | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<ProjectSettings | null>(
+    null,
+  );
+  const [folderPreview, setFolderPreview] = useState<FolderPreviewState | null>(
+    null,
+  );
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
-  const [appSettingsDraft, setAppSettingsDraft] = useState<AppSettings | null>(null);
+  const [appSettingsDraft, setAppSettingsDraft] = useState<AppSettings | null>(
+    null,
+  );
   const [defaultProjectDraft, setDefaultProjectDraft] =
     useState<ProjectSettings | null>(null);
   const [closePromptOpen, setClosePromptOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
+  const [pendingAction, setPendingAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   // macOS convention is a bare document title in the titlebar (the app name
   // already lives in the menu bar); other platforms keep the app-name suffix.
@@ -494,14 +697,14 @@ export default function App() {
     // every window's listeners regardless of target.
     const appWindow = getCurrentWindow();
     const unlistenClose = appWindow.listen("close-requested", () =>
-      setClosePromptOpen(true)
+      setClosePromptOpen(true),
     );
     const unlistenMenu = appWindow.listen<string>("menu", (e) => {
       dispatchMenuRef.current(e.payload);
     });
     const unlistenAppSettings = appWindow.listen<AppSettings>(
       "app-settings-changed",
-      (e) => setAppSettings(e.payload)
+      (e) => setAppSettings(e.payload),
     );
     return () => {
       void unlistenClose.then((fn) => fn());
@@ -528,7 +731,7 @@ export default function App() {
     const id = setInterval(() => {
       invoke<ProjectView>("get_project").then((next) => {
         setProject((prev) =>
-          JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+          JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
         );
       });
     }, 1000);
@@ -580,15 +783,26 @@ export default function App() {
   }
 
   async function browseFolder() {
-    const picked = await open({ directory: true, title: "Add Folder Contents to Bundle" });
+    const picked = await open({
+      directory: true,
+      title: "Add Folder Contents to Bundle",
+    });
     if (!picked) return;
     await loadFolderPreview(picked, false);
   }
 
   async function loadFolderPreview(folder: string, recursive: boolean) {
     try {
-      const files = await invoke<string[]>("preview_folder", { path: folder, recursive });
-      setFolderPreview({ folder, recursive, files });
+      const files = await invoke<FolderPreviewFile[]>("preview_folder", {
+        path: folder,
+        recursive,
+      });
+      setFolderPreview({
+        folder,
+        recursive,
+        files,
+        selectedPath: files[0]?.path ?? null,
+      });
     } catch (e) {
       setFolderPreview(null);
       setStatusMsg(String(e));
@@ -597,9 +811,26 @@ export default function App() {
 
   async function confirmFolderAdd() {
     if (!folderPreview) return;
-    const paths = folderPreview.files;
+    const paths = folderPreview.files
+      .filter((file) => file.importable)
+      .map((file) => file.path);
     setFolderPreview(null);
     applyAddResult(await invoke<AddResult>("add_files", { paths }));
+  }
+
+  function removeFolderPreviewFile(path: string) {
+    setFolderPreview((preview) => {
+      if (!preview) return preview;
+      const files = preview.files.filter((file) => file.path !== path);
+      return {
+        ...preview,
+        files,
+        selectedPath:
+          preview.selectedPath === path
+            ? (files[0]?.path ?? null)
+            : preview.selectedPath,
+      };
+    });
   }
 
   async function removeFile(path: string) {
@@ -718,13 +949,17 @@ export default function App() {
     next.splice(index, 0, moved);
     setProject({ ...project, files: next }); // optimistic
     setProject(
-      await invoke<ProjectView>("set_order", { paths: next.map((f) => f.path) })
+      await invoke<ProjectView>("set_order", {
+        paths: next.map((f) => f.path),
+      }),
     );
   }
 
   async function commitSettings() {
     if (!settingsDraft) return;
-    setProject(await invoke<ProjectView>("update_settings", { settings: settingsDraft }));
+    setProject(
+      await invoke<ProjectView>("update_settings", { settings: settingsDraft }),
+    );
     setSettingsDraft(null);
   }
 
@@ -756,7 +991,9 @@ export default function App() {
 
   return (
     <main className="app" onContextMenu={(e) => e.preventDefault()}>
-      {appSettings?.menu_rendering === "both" && <MenuBar dispatch={dispatchMenu} />}
+      {appSettings?.menu_rendering === "both" && (
+        <MenuBar dispatch={dispatchMenu} />
+      )}
       <header className="toolbar">
         {isMacOS && <ProjectMenuButton dispatch={dispatchMenu} />}
         <button onClick={() => void browseFiles()}>Add Files…</button>
@@ -779,14 +1016,22 @@ export default function App() {
       </header>
 
       {project.files.length === 0 ? (
-        <div className="empty-hint">Use “Add Files…” or “Add Folder…” to get started</div>
+        <div className="empty-hint">
+          Use “Add Files…” or “Add Folder…” to get started
+        </div>
       ) : (
         <div className="file-table-wrap">
           <div className="file-table" role="table">
             <div className="ft-row ft-header" role="row">
-              <div className="col-name" role="columnheader">Name</div>
-              <div className="col-folder" role="columnheader">Folder</div>
-              <div className="col-size" role="columnheader">Size</div>
+              <div className="col-name" role="columnheader">
+                Name
+              </div>
+              <div className="col-folder" role="columnheader">
+                Folder
+              </div>
+              <div className="col-size" role="columnheader">
+                Size
+              </div>
             </div>
             {project.files.map((file, i) => (
               <div
@@ -814,7 +1059,11 @@ export default function App() {
                 <div
                   className="col-name"
                   role="cell"
-                  title={file.size === null ? "File is missing or unreadable" : undefined}
+                  title={
+                    file.size === null
+                      ? "File is missing or unreadable"
+                      : undefined
+                  }
                 >
                   <button
                     className="remove-btn"
@@ -844,9 +1093,13 @@ export default function App() {
           <li onClick={() => void moveFile(menu.path, "up")}>Move Up</li>
           <li onClick={() => void moveFile(menu.path, "down")}>Move Down</li>
           <li onClick={() => void moveFile(menu.path, "top")}>Move to Top</li>
-          <li onClick={() => void moveFile(menu.path, "bottom")}>Move to Bottom</li>
+          <li onClick={() => void moveFile(menu.path, "bottom")}>
+            Move to Bottom
+          </li>
           <li className="separator" />
-          <li onClick={() => void removeFile(menu.path)}>Remove File from Bundle</li>
+          <li onClick={() => void removeFile(menu.path)}>
+            Remove File from Bundle
+          </li>
         </ul>
       )}
 
@@ -913,7 +1166,8 @@ export default function App() {
                 onChange={(e) =>
                   setAppSettingsDraft({
                     ...appSettingsDraft,
-                    menu_rendering: e.target.value as AppSettings["menu_rendering"],
+                    menu_rendering: e.target
+                      .value as AppSettings["menu_rendering"],
                   })
                 }
               >
@@ -927,7 +1181,9 @@ export default function App() {
               <button
                 type="button"
                 onClick={() =>
-                  setDefaultProjectDraft(appSettingsDraft.default_project_settings)
+                  setDefaultProjectDraft(
+                    appSettingsDraft.default_project_settings,
+                  )
                 }
               >
                 Edit Default Project...
@@ -1000,7 +1256,9 @@ export default function App() {
 
             <div className="modal-buttons">
               <button onClick={commitDefaultProjectSettings}>OK</button>
-              <button onClick={() => setDefaultProjectDraft(null)}>Cancel</button>
+              <button onClick={() => setDefaultProjectDraft(null)}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -1008,7 +1266,16 @@ export default function App() {
 
       {folderPreview && (
         <div className="modal-backdrop">
-          <div className="modal folder-preview-modal">
+          <div
+            className="modal folder-preview-modal"
+            style={
+              {
+                "--folder-preview-modal-width": folderPreviewModalWidth(
+                  folderPreview.files
+                ),
+              } as CSSProperties
+            }
+          >
             <h2>Add Folder Contents</h2>
             <p className="folder-preview-path">
               <code>{folderPreview.folder}</code>
@@ -1028,28 +1295,34 @@ export default function App() {
             ) : (
               <>
                 <p className="preview-count">
+                  {importableCount(folderPreview.files)} of{" "}
                   {folderPreview.files.length}{" "}
-                  {folderPreview.files.length === 1 ? "file" : "files"} will be
-                  screened and added:
+                  {folderPreview.files.length === 1 ? "file is" : "files are"}{" "}
+                  importable
                 </p>
-                <ul className="preview-list">
-                  {folderPreview.files.map((f) => (
-                    <li key={f}>
-                      {f.startsWith(folderPreview.folder + "/")
-                        ? f.slice(folderPreview.folder.length + 1)
-                        : f}
-                    </li>
-                  ))}
-                </ul>
+                <FolderPreviewTable
+                  files={folderPreview.files}
+                  selectedPath={folderPreview.selectedPath}
+                  setSelectedPath={(path) =>
+                    setFolderPreview({
+                      ...folderPreview,
+                      selectedPath: path,
+                    })
+                  }
+                  removeFile={removeFolderPreviewFile}
+                />
               </>
             )}
             <div className="modal-buttons">
               <button
                 onClick={() => void confirmFolderAdd()}
-                disabled={folderPreview.files.length === 0}
+                disabled={importableCount(folderPreview.files) === 0}
               >
-                Add {folderPreview.files.length > 0 ? folderPreview.files.length : ""}{" "}
-                {folderPreview.files.length === 1 ? "File" : "Files"}
+                Add{" "}
+                {importableCount(folderPreview.files) > 0
+                  ? importableCount(folderPreview.files)
+                  : ""}{" "}
+                {importableCount(folderPreview.files) === 1 ? "File" : "Files"}
               </button>
               <button onClick={() => setFolderPreview(null)}>Cancel</button>
             </div>
@@ -1062,11 +1335,13 @@ export default function App() {
           <div className="modal">
             <h2>Save changes?</h2>
             <p>
-              {projectDisplayName(project)} has unsaved changes. Save them before
-              continuing?
+              {projectDisplayName(project)} has unsaved changes. Save them
+              before continuing?
             </p>
             <div className="modal-buttons">
-              <button onClick={() => void resolvePendingAction(true)}>Save</button>
+              <button onClick={() => void resolvePendingAction(true)}>
+                Save
+              </button>
               <button onClick={() => void resolvePendingAction(false)}>
                 Don’t Save
               </button>
@@ -1081,12 +1356,14 @@ export default function App() {
           <div className="modal">
             <h2>Save changes?</h2>
             <p>
-              {projectDisplayName(project)} has unsaved changes. Save them before
-              closing?
+              {projectDisplayName(project)} has unsaved changes. Save them
+              before closing?
             </p>
             <div className="modal-buttons">
               <button onClick={() => void closeWindowSaving(true)}>Save</button>
-              <button onClick={() => void closeWindowSaving(false)}>Don’t Save</button>
+              <button onClick={() => void closeWindowSaving(false)}>
+                Don’t Save
+              </button>
               <button onClick={() => setClosePromptOpen(false)}>Cancel</button>
             </div>
           </div>

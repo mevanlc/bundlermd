@@ -370,7 +370,9 @@ button:disabled {
 }
 
 .folder-preview-modal {
-  width: 30rem;
+  box-sizing: border-box;
+  width: var(--folder-preview-modal-width);
+  max-width: 80vw;
 }
 
 .folder-preview-path code {
@@ -384,24 +386,90 @@ button:disabled {
   color: #666;
 }
 
-.preview-list {
-  max-height: 14rem;
-  overflow-y: auto;
+.preview-table-wrap {
+  max-height: 18rem;
+  overflow: auto;
   margin: 0.4rem 0;
-  padding: 0.4rem 0.6rem;
-  list-style: none;
   font-size: 0.85rem;
-  font-family: ui-monospace, Menlo, monospace;
   background: #f3f3f3;
   border: 1px solid #ddd;
   border-radius: 6px;
 }
 
-.preview-list li {
-  padding: 0.1rem 0;
+.preview-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.preview-table th,
+.preview-table td {
+  padding: 0.25rem 0.45rem;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #e9e9e9;
+  font-size: 0.78rem;
+  color: #666;
+}
+
+.preview-sort-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.preview-sort-btn:hover {
+  background: transparent;
+}
+
+.preview-table th:nth-child(1),
+.preview-table td:nth-child(1) {
+  width: 1.9rem;
+  padding-left: 0.25rem;
+  padding-right: 0.2rem;
+}
+
+.preview-table th:nth-child(2),
+.preview-table td:nth-child(2) {
+  width: 6.5rem;
+}
+
+.preview-table th:nth-child(3),
+.preview-table td:nth-child(3) {
+  font-family: ui-monospace, Menlo, monospace;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.preview-table tbody tr {
+  cursor: default;
+}
+
+.preview-table tbody tr:hover {
+  background: #eef5ff;
+}
+
+.preview-table tbody tr.selected {
+  background: #dbeafe;
+}
+
+.preview-table tr:last-child td {
+  border-bottom: none;
 }
 
 .field {
@@ -588,9 +656,27 @@ fieldset.field {
     color: #ff6b6b;
   }
 
-  .preview-list {
+  .preview-table-wrap {
     background: #1f1f1f;
     border-color: #4a4a4a;
+  }
+
+  .preview-table th {
+    background: #252525;
+    color: #aaa;
+  }
+
+  .preview-table th,
+  .preview-table td {
+    border-color: #3a3a3a;
+  }
+
+  .preview-table tbody tr:hover {
+    background: #2e3947;
+  }
+
+  .preview-table tbody tr.selected {
+    background: #33445c;
   }
 
   .preview-count,
