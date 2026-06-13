@@ -11,7 +11,10 @@
         { "id": "save", "label": "Save", "accelerator": "CmdOrCtrl+S" },
         { "id": "save_as", "label": "Save As…", "accelerator": "Shift+CmdOrCtrl+S" },
         { "separator": true },
-        { "id": "export", "label": "Export Bundle…", "accelerator": "CmdOrCtrl+E" }
+        { "id": "project_settings", "label": "Project Info…" },
+        { "id": "export", "label": "Export Bundle…", "accelerator": "CmdOrCtrl+E" },
+        { "separator": true },
+        { "id": "app_settings", "label": "App Settings…", "accelerator": "CmdOrCtrl+," }
       ]
     },
     {

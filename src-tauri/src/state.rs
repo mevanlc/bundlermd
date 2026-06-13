@@ -400,7 +400,7 @@ pub fn new_window(app: tauri::AppHandle, store: State<'_, GlobalStore>) -> Resul
     let label = format!("main-{}", WINDOW_SEQ.fetch_add(1, Ordering::Relaxed));
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::default())
         .title("BundlerMD")
-        .inner_size(800.0, 600.0)
+        .inner_size(800.0, 800.0)
         // Same rationale as dragDropEnabled: false in tauri.conf.json — the
         // OS drop handler fights HTML5 row drag-reorder.
         .disable_drag_drop_handler()
@@ -438,7 +438,10 @@ pub fn save_project(
             .collect();
         let file = ProjectFile::new(
             stored_files,
-            project.last_export.as_ref().map(|p| p.display().to_string()),
+            project
+                .last_export
+                .as_ref()
+                .map(|p| p.display().to_string()),
             project.settings.clone(),
         );
         file.save(&target)?;
@@ -606,9 +609,14 @@ pub fn generate_bundle(
     }
 
     let title = effective_title(project_path, output);
+    let description = if settings.include_description_in_export {
+        settings.description.as_str()
+    } else {
+        ""
+    };
     let markdown = bundle::assemble(
         &title,
-        &settings.introduction,
+        description,
         &bundle_files,
         settings.newlines.resolve(),
         settings.toc_links,

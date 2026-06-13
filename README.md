@@ -20,7 +20,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 ````
 # Project Title
 
-[Introduction text if set]
+[Description text if included]
 
 ## Table of Contents
 
@@ -83,7 +83,8 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
   "files": ["src/file1.rs", "lib/helper.py", "/outside/project/shared.rs"],
   "last_export": "/abs/path/bundle.md",
   "settings": {
-    "introduction": "",
+    "description": "",
+    "include_description_in_export": true,
     "newlines": "unix",
     "path_presentation": { "mode": "smart" },
     "toc_links": false

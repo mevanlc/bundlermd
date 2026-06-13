@@ -15,7 +15,8 @@ interface FileRow {
 type PathPresentation = { mode: "smart" } | { mode: "absolute" };
 
 interface ProjectSettings {
-  introduction: string;
+  description: string;
+  include_description_in_export: boolean;
   newlines: "unix" | "windows" | "platform";
   path_presentation: PathPresentation;
   toc_links: boolean;
@@ -311,7 +312,8 @@ function InfoTip({ lines }: { lines: string[] }) {
 const EMPTY_PROJECT: ProjectView = {
   files: [],
   settings: {
-    introduction: "",
+    description: "",
+    include_description_in_export: true,
     newlines: "unix",
     path_presentation: { mode: "smart" },
     toc_links: false,
@@ -372,6 +374,7 @@ export default function App() {
     save: () => void saveProject(false),
     save_as: () => void saveProject(true),
     export: () => void exportBundle(),
+    project_settings: () => setSettingsDraft(projectRef.current.settings),
     app_settings: () => {
       if (appSettings) setAppSettingsDraft(appSettings);
     },
@@ -655,11 +658,11 @@ export default function App() {
         <button onClick={() => void browseFolder()}>Add Folder…</button>
         <button
           className="gear-btn"
-          title="Project Settings…"
-          aria-label="Project Settings"
+          title="Project Info…"
+          aria-label="Project Info"
           onClick={() => setSettingsDraft(project.settings)}
         >
-          ⚙
+          ⓘ
         </button>
         <button
           className="export-btn"
@@ -745,17 +748,30 @@ export default function App() {
       {draft && (
         <div className="modal-backdrop">
           <div className="modal settings-modal">
-            <h2>Project Settings</h2>
+            <h2>Project Info</h2>
 
             <label className="field">
-              <span>Introduction</span>
+              <span>Description</span>
               <textarea
                 rows={5}
-                value={draft.introduction}
+                value={draft.description}
                 onChange={(e) =>
-                  setSettingsDraft({ ...draft, introduction: e.target.value })
+                  setSettingsDraft({ ...draft, description: e.target.value })
                 }
               />
+            </label>
+            <label className="radio">
+              <input
+                type="checkbox"
+                checked={draft.include_description_in_export}
+                onChange={(e) =>
+                  setSettingsDraft({
+                    ...draft,
+                    include_description_in_export: e.target.checked,
+                  })
+                }
+              />
+              Include Description in Export
             </label>
 
             <label className="field">

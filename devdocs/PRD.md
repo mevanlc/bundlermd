@@ -39,9 +39,10 @@ A project does not need to be created, saved, or opened in order to export a bun
 
 ### Project settings
 
-Accessed via a **Project Settings...** button which opens a dialog.
+Accessed via a **Project Info...** button which opens a dialog.
 
-- **Introduction** — multiline text. Emitted near the top of the bundle. When empty, a blank
+- **Description** — multiline text. When **Include Description in Export** is checked,
+  the description is emitted near the top of the bundle. When unchecked or empty, a blank
   line is left where the text would have appeared.
 - **Path Presentation** — controls how file paths are both stored in the `.bmd` and rendered
   in the bundle's table of contents and per-file headers. Radio buttons:
@@ -91,7 +92,7 @@ Structure (pseudo-Mustache; heading depths are part of the format):
 `````markdown
 # {{ project_basename || output_basename }}
 
-{{ project.introduction }}
+{{ project.description if include_description_in_export }}
 
 ## Table of Contents
 

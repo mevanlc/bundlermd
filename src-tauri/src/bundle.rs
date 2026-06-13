@@ -56,12 +56,12 @@ pub struct BundleFile {
 }
 
 /// Assemble the export per the PRD format. `title` falls back upstream
-/// (project title, else .bmd/output basename). An empty introduction leaves
+/// (project title, else .bmd/output basename). An empty description leaves
 /// a blank line in its place. With `toc_links`, TOC entries link to the file
 /// headings via GitHub-style anchors.
 pub fn assemble(
     title: &str,
-    introduction: &str,
+    description: &str,
     files: &[BundleFile],
     nl: Newline,
     toc_links: bool,
@@ -86,10 +86,10 @@ pub fn assemble(
 
     push_line(&mut out, &format!("# {}", title));
     push_line(&mut out, "");
-    if !introduction.is_empty() {
-        let intro = normalize_newlines(introduction, nl);
-        out.push_str(&intro);
-        if !intro.ends_with(n) {
+    if !description.is_empty() {
+        let description = normalize_newlines(description, nl);
+        out.push_str(&description);
+        if !description.ends_with(n) {
             out.push_str(n);
         }
     }
@@ -201,9 +201,9 @@ and crlf
     }
 
     #[test]
-    fn assemble_includes_introduction() {
-        let out = assemble("T", "Hello intro.", &files(), Newline::Unix, false);
-        assert!(out.starts_with("# T\n\nHello intro.\n\n## Table of Contents\n"));
+    fn assemble_includes_description() {
+        let out = assemble("T", "Hello description.", &files(), Newline::Unix, false);
+        assert!(out.starts_with("# T\n\nHello description.\n\n## Table of Contents\n"));
     }
 
     #[test]

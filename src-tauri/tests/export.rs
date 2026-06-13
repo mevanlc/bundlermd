@@ -157,3 +157,24 @@ fn export_enforces_size_limits() {
     assert!(!markdown.contains("big.txt"));
     assert!(!markdown.contains("c.txt"));
 }
+
+#[test]
+fn export_can_omit_description() {
+    let files = vec![fixture("plain.txt")];
+    let settings = ProjectSettings {
+        description: "Hidden description".into(),
+        include_description_in_export: false,
+        ..Default::default()
+    };
+    let (markdown, problems) = generate_bundle(
+        &files,
+        &settings,
+        None,
+        Path::new("/tmp/out.md"),
+        Limits::default(),
+    );
+
+    assert!(problems.is_empty());
+    assert!(markdown.starts_with("# out\n\n\n## Table of Contents\n"));
+    assert!(!markdown.contains("Hidden description"));
+}

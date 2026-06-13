@@ -34,7 +34,7 @@ The PRD's "core workflow", no project persistence.
 - Text/binary detection on add (UTF-16 BOM rule, NUL-byte rule, UTF-8 fallback), with
   batched warnings.
 - Export Bundle: save dialog → in-memory generation → write BOMless UTF-8.
-  - Bundle format per PRD: H1 title (basename fallback), introduction slot, TOC (plain, no
+  - Bundle format per PRD: H1 title (basename fallback), description slot, TOC (plain, no
     links yet), per-file H2 sections.
   - Backtick fence sizing (longest run + 1, min 3).
   - Newline normalization (hardcoded Always Unix in this phase).
@@ -48,10 +48,10 @@ file reported in the problems dialog.
 
 ### Phase 2 — Projects
 
-- `.bmd` JSON schema with version field; load/save in Rust with serde.
+- `.bmd` JSON schema with schema-filename versioning; load/save in Rust with serde.
 - Save / Save As / Open / New; dirty tracking; close-with-unsaved-changes prompt
   (typical document-editor UX per PRD).
-- Project Settings dialog: Introduction, Output newlines (Unix / Windows /
+- Project Info dialog: Description, Output newlines (Unix / Windows /
   Platform Default) — all wired into export.
 - Path Presentation setting: Absolute and **Smart** (common-prefix-under-`.bmd`-dir rule plus
   the progressive basename-disambiguation algorithm). It governs both how paths are stored in

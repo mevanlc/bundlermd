@@ -50,7 +50,8 @@ pub enum PathPresentation {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct ProjectSettings {
-    pub introduction: String,
+    pub description: String,
+    pub include_description_in_export: bool,
     pub newlines: NewlineSetting,
     pub path_presentation: PathPresentation,
     pub toc_links: bool,
@@ -59,7 +60,8 @@ pub struct ProjectSettings {
 impl Default for ProjectSettings {
     fn default() -> Self {
         Self {
-            introduction: String::new(),
+            description: String::new(),
+            include_description_in_export: true,
             newlines: NewlineSetting::Unix,
             path_presentation: PathPresentation::Smart,
             toc_links: false,
@@ -80,12 +82,13 @@ pub struct ProjectFile {
 }
 
 impl ProjectFile {
-    pub fn new(
-        files: Vec<String>,
-        last_export: Option<String>,
-        settings: ProjectSettings,
-    ) -> Self {
-        Self { schema: SCHEMA_URL.into(), files, last_export, settings }
+    pub fn new(files: Vec<String>, last_export: Option<String>, settings: ProjectSettings) -> Self {
+        Self {
+            schema: SCHEMA_URL.into(),
+            files,
+            last_export,
+            settings,
+        }
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -159,7 +162,8 @@ mod tests {
             vec!["/a/b.txt".into(), "/c/d.txt".into()],
             Some("/out.md".into()),
             ProjectSettings {
-                introduction: "Intro".into(),
+                description: "Description".into(),
+                include_description_in_export: true,
                 newlines: NewlineSetting::Platform,
                 path_presentation: PathPresentation::Absolute,
                 toc_links: true,
@@ -202,7 +206,10 @@ mod tests {
         let dir = Path::new("/proj");
         // Under the project dir (directly and nested): stored relative.
         assert_eq!(stored_path(Path::new("/proj/a.txt"), dir), "a.txt");
-        assert_eq!(stored_path(Path::new("/proj/src/main.rs"), dir), "src/main.rs");
+        assert_eq!(
+            stored_path(Path::new("/proj/src/main.rs"), dir),
+            "src/main.rs"
+        );
         // Outside the project dir: stored absolute.
         assert_eq!(
             stored_path(Path::new("/elsewhere/x.txt"), dir),

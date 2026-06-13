@@ -29,10 +29,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "introduction": {
+        "description": {
           "type": "string",
-          "description": "Text emitted after the title and before the Table of Contents.",
+          "description": "Project description text.",
           "default": ""
+        },
+        "include_description_in_export": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the description text is emitted after the title and before the Table of Contents."
         },
         "newlines": {
           "type": "string",
