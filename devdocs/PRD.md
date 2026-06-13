@@ -7,7 +7,8 @@ Frameworks, toolkits, libraries, and resource packs are implementer's choice.
 
 ## Core workflow
 
-1. The user adds files to the workarea via drag'n'drop or a browse dialog.
+1. The user adds files to the workarea via a browse dialog. OS drag'n'drop to add
+   files is deferred to an unspecified future version.
 2. The user executes **Export Bundle**, which prompts for a save location for the generated
    markdown (`.md`) file.
 3. BundlerMD reads the current contents of the added files and combines them into a single
@@ -18,7 +19,13 @@ A project does not need to be created, saved, or opened in order to export a bun
 ## Projects
 
 - A project can be saved-to / opened-from a `.bmd` project file.
-- The `.bmd` format is JSON and includes a format-version field.
+- The `.bmd` format is JSON and uses an independent single whole-number schema
+  version, visible in the schema filename (`project-v1.json`, `project-v2.json`,
+  etc.). The schema is linked from project files by public URL in case it is
+  useful, but it is mostly for internal validation rather than a guaranteed
+  contract for hand-editing project files. A schema version bump should be
+  treated as very likely to include breaking changes, and a particular schema
+  version is not guaranteed to remain stable forever.
 - A `.bmd` stores:
   - The paths of the files added to the workarea, in order. Files under the `.bmd` file's
     directory (or a descendant) are stored relative to it so the project travels with its
@@ -66,8 +73,9 @@ Accessed via a **Project Settings...** button which opens a dialog.
 
 ### Adding folders
 
-Dropping (or browsing to) a folder presents a dialog listing the files that would be added,
+Browsing to a folder presents a dialog listing the files that would be added,
 with an option to import only the folder's immediate children or to import recursively.
+OS drag'n'drop of folders is deferred to an unspecified future version.
 Import proceeds without stopping for errors: all files that pass the binary/text checks are
 added, and any files that were skipped (binary, unreadable, over size limits, etc.) are
 reported in a single batched warning.
