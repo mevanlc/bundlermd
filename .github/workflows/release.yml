@@ -75,50 +75,52 @@ jobs:
           node -e '
             const fs = require("fs");
             const version = process.env.VERSION;
-            const path = "src-tauri/tauri.conf.json";
-            const cfg = JSON.parse(fs.readFileSync(path, "utf8"));
-            cfg.version = version;
-            fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + "\n");
+            for (const path of ["src-tauri/tauri.conf.json", "package.json"]) {
+              const json = JSON.parse(fs.readFileSync(path, "utf8"));
+              json.version = version;
+              fs.writeFileSync(path, JSON.stringify(json, null, 2) + "\n");
+            }
           '
 
-          node -e '
-            const fs = require("fs");
-            const version = process.env.VERSION;
-            const path = "package.json";
-            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
-            pkg.version = version;
-            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
-          '
+          python3 - <<'PY'
+          import os
+          import re
 
-          python - <<'PY'
-import os
-import re
+          version = os.environ["VERSION"]
+          path = "src-tauri/Cargo.toml"
+          text = open(path, "r", encoding="utf-8").read()
+          lines = text.splitlines()
 
-version = os.environ["VERSION"]
-path = "src-tauri/Cargo.toml"
-text = open(path, "r", encoding="utf-8").read()
-lines = text.splitlines()
+          in_package = False
+          updated = False
+          for i, line in enumerate(lines):
+              if line.strip() == "[package]":
+                  in_package = True
+                  continue
+              if in_package:
+                  if line.startswith("[") and line.strip().endswith("]"):
+                      break
+                  m = re.match(r'^\s*version\s*=\s*"[^"]+"', line)
+                  if m:
+                      lines[i] = 'version = "{}"'.format(version)
+                      updated = True
+                      break
 
-in_package = False
-updated = False
-for i, line in enumerate(lines):
-    if line.strip() == "[package]":
-        in_package = True
-        continue
-    if in_package:
-        if line.startswith("[") and line.strip().endswith("]"):
-            break
-        m = re.match(r'^\s*version\s*=\s*"[^"]+"', line)
-        if m:
-            lines[i] = 'version = "{}"'.format(version)
-            updated = True
-            break
+          if not updated:
+              raise SystemExit("Could not update [package] version in src-tauri/Cargo.toml")
 
-if not updated:
-    raise SystemExit("Could not update [package] version in src-tauri/Cargo.toml")
-
-open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+          open(path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
           PY
+
+      - name: Show release versions
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e 'console.log("package.json", require("./package.json").version)'
+          node -e 'console.log("tauri.conf.json", require("./src-tauri/tauri.conf.json").version)'
+          cargo metadata --manifest-path src-tauri/Cargo.toml --no-deps --format-version 1 \
+            | node -e 'let data=""; process.stdin.on("data", c => data += c); process.stdin.on("end", () => console.log("src-tauri/Cargo.toml", JSON.parse(data).packages[0].version));'
 
       - uses: tauri-apps/tauri-action@v0
         env:
