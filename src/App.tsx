@@ -66,6 +66,7 @@ interface AppSettings {
   max_file_bytes: number;
   max_total_bytes: number;
   menu_rendering: "native" | "both";
+  default_project_settings: ProjectSettings;
 }
 
 /** Mirrors the node shapes in src/menu.json (shared with the Rust side). */
@@ -309,6 +310,98 @@ function InfoTip({ lines }: { lines: string[] }) {
   );
 }
 
+function ProjectSettingsEditor({
+  draft,
+  setDraft,
+}: {
+  draft: ProjectSettings;
+  setDraft: (settings: ProjectSettings) => void;
+}) {
+  return (
+    <>
+      <label className="field">
+        <span>Description</span>
+        <textarea
+          rows={5}
+          value={draft.description}
+          onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+        />
+      </label>
+      <label className="radio">
+        <input
+          type="checkbox"
+          checked={draft.include_description_in_export}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              include_description_in_export: e.target.checked,
+            })
+          }
+        />
+        Include Description in Export
+      </label>
+
+      <label className="field">
+        <span>
+          Path presentation
+          <InfoTip
+            lines={[
+              "How file paths are stored in the project file and shown in the bundle's TOC and headers.",
+              "Smart: files in the project file's folder are stored and shown relative to it (so the project travels with its files); everything else stays absolute, shown as the shortest unambiguous name.",
+              "Absolute paths: the full path, always.",
+            ]}
+          />
+        </span>
+        <select
+          value={draft.path_presentation.mode}
+          onChange={(e) => {
+            const mode = e.target.value as PathPresentation["mode"];
+            setDraft({ ...draft, path_presentation: { mode } });
+          }}
+        >
+          <option value="smart">Smart (default)</option>
+          <option value="absolute">Absolute paths</option>
+        </select>
+      </label>
+
+      <label className="field">
+        <span>
+          Output newlines
+          <InfoTip
+            lines={[
+              "Every newline in the bundle is normalized to this, including inside file content.",
+              "Always Unix: LF. Always Windows: CRLF.",
+              "Platform Default: whatever the OS running the export uses.",
+            ]}
+          />
+        </span>
+        <select
+          value={draft.newlines}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              newlines: e.target.value as ProjectSettings["newlines"],
+            })
+          }
+        >
+          <option value="unix">Always Unix</option>
+          <option value="windows">Always Windows</option>
+          <option value="platform">Platform Default</option>
+        </select>
+      </label>
+
+      <label className="radio">
+        <input
+          type="checkbox"
+          checked={draft.toc_links}
+          onChange={(e) => setDraft({ ...draft, toc_links: e.target.checked })}
+        />
+        Generate internal links in Table of Contents
+      </label>
+    </>
+  );
+}
+
 const EMPTY_PROJECT: ProjectView = {
   files: [],
   settings: {
@@ -355,6 +448,8 @@ export default function App() {
   const [folderPreview, setFolderPreview] = useState<FolderPreviewState | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [appSettingsDraft, setAppSettingsDraft] = useState<AppSettings | null>(null);
+  const [defaultProjectDraft, setDefaultProjectDraft] =
+    useState<ProjectSettings | null>(null);
   const [closePromptOpen, setClosePromptOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
@@ -453,7 +548,8 @@ export default function App() {
   // Esc dismisses the topmost cancellable overlay.
   const escRef = useRef<() => void>(() => {});
   escRef.current = () => {
-    if (settingsDraft) setSettingsDraft(null);
+    if (defaultProjectDraft) setDefaultProjectDraft(null);
+    else if (settingsDraft) setSettingsDraft(null);
     else if (appSettingsDraft) setAppSettingsDraft(null);
     else if (folderPreview) setFolderPreview(null);
     else if (closePromptOpen) setClosePromptOpen(false);
@@ -639,6 +735,15 @@ export default function App() {
     setAppSettingsDraft(null);
   }
 
+  function commitDefaultProjectSettings() {
+    if (!appSettingsDraft || !defaultProjectDraft) return;
+    setAppSettingsDraft({
+      ...appSettingsDraft,
+      default_project_settings: defaultProjectDraft,
+    });
+    setDefaultProjectDraft(null);
+  }
+
   async function closeWindowSaving(saveFirst: boolean) {
     if (saveFirst && !(await saveProject(false))) {
       setClosePromptOpen(false);
@@ -650,7 +755,7 @@ export default function App() {
   const draft = settingsDraft;
 
   return (
-    <main className="app">
+    <main className="app" onContextMenu={(e) => e.preventDefault()}>
       {appSettings?.menu_rendering === "both" && <MenuBar dispatch={dispatchMenu} />}
       <header className="toolbar">
         {isMacOS && <ProjectMenuButton dispatch={dispatchMenu} />}
@@ -750,89 +855,10 @@ export default function App() {
           <div className="modal settings-modal">
             <h2>Project Info</h2>
 
-            <label className="field">
-              <span>Description</span>
-              <textarea
-                rows={5}
-                value={draft.description}
-                onChange={(e) =>
-                  setSettingsDraft({ ...draft, description: e.target.value })
-                }
-              />
-            </label>
-            <label className="radio">
-              <input
-                type="checkbox"
-                checked={draft.include_description_in_export}
-                onChange={(e) =>
-                  setSettingsDraft({
-                    ...draft,
-                    include_description_in_export: e.target.checked,
-                  })
-                }
-              />
-              Include Description in Export
-            </label>
-
-            <label className="field">
-              <span>
-                Path presentation
-                <InfoTip
-                  lines={[
-                    "How file paths are stored in the project file and shown in the bundle's TOC and headers.",
-                    "Smart: files in the project file's folder are stored and shown relative to it (so the project travels with its files); everything else stays absolute, shown as the shortest unambiguous name.",
-                    "Absolute paths: the full path, always.",
-                  ]}
-                />
-              </span>
-              <select
-                value={draft.path_presentation.mode}
-                onChange={(e) => {
-                  const mode = e.target.value as PathPresentation["mode"];
-                  setSettingsDraft({ ...draft, path_presentation: { mode } });
-                }}
-              >
-                <option value="smart">Smart (default)</option>
-                <option value="absolute">Absolute paths</option>
-              </select>
-            </label>
-
-            <label className="field">
-              <span>
-                Output newlines
-                <InfoTip
-                  lines={[
-                    "Every newline in the bundle is normalized to this, including inside file content.",
-                    "Always Unix: LF. Always Windows: CRLF.",
-                    "Platform Default: whatever the OS running the export uses.",
-                  ]}
-                />
-              </span>
-              <select
-                value={draft.newlines}
-                onChange={(e) =>
-                  setSettingsDraft({
-                    ...draft,
-                    newlines: e.target.value as ProjectSettings["newlines"],
-                  })
-                }
-              >
-                <option value="unix">Always Unix</option>
-                <option value="windows">Always Windows</option>
-                <option value="platform">Platform Default</option>
-              </select>
-            </label>
-
-            <label className="radio">
-              <input
-                type="checkbox"
-                checked={draft.toc_links}
-                onChange={(e) =>
-                  setSettingsDraft({ ...draft, toc_links: e.target.checked })
-                }
-              />
-              Generate internal links in Table of Contents
-            </label>
+            <ProjectSettingsEditor
+              draft={draft}
+              setDraft={(settings) => setSettingsDraft(settings)}
+            />
 
             <div className="modal-buttons">
               <button onClick={() => void commitSettings()}>OK</button>
@@ -896,6 +922,18 @@ export default function App() {
               </select>
             </label>
 
+            <div className="field">
+              <span>Default project</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setDefaultProjectDraft(appSettingsDraft.default_project_settings)
+                }
+              >
+                Edit Default Project...
+              </button>
+            </div>
+
             <label className="field">
               <span>
                 Maximum individual file size (bytes)
@@ -945,6 +983,24 @@ export default function App() {
             <div className="modal-buttons">
               <button onClick={() => void commitAppSettings()}>OK</button>
               <button onClick={() => setAppSettingsDraft(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {defaultProjectDraft && (
+        <div className="modal-backdrop">
+          <div className="modal settings-modal">
+            <h2>Default Project</h2>
+
+            <ProjectSettingsEditor
+              draft={defaultProjectDraft}
+              setDraft={setDefaultProjectDraft}
+            />
+
+            <div className="modal-buttons">
+              <button onClick={commitDefaultProjectSettings}>OK</button>
+              <button onClick={() => setDefaultProjectDraft(null)}>Cancel</button>
             </div>
           </div>
         </div>

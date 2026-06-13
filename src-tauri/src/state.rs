@@ -36,13 +36,18 @@ impl Default for Limits {
     }
 }
 
-#[derive(Default)]
 struct Project {
     files: Vec<PathBuf>,
     settings: ProjectSettings,
     last_export: Option<PathBuf>,
     project_path: Option<PathBuf>,
     dirty: bool,
+}
+
+impl Default for Project {
+    fn default() -> Self {
+        Self::new(ProjectSettings::default())
+    }
 }
 
 /// One project per window, keyed by window label. A label with no entry is
@@ -63,6 +68,18 @@ impl Workareas {
     fn with<R>(&self, label: &str, f: impl FnOnce(&mut Project) -> R) -> R {
         let mut map = self.0.lock().unwrap();
         f(map.entry(label.to_string()).or_default())
+    }
+
+    fn with_default<R>(
+        &self,
+        label: &str,
+        settings: ProjectSettings,
+        f: impl FnOnce(&mut Project) -> R,
+    ) -> R {
+        let mut map = self.0.lock().unwrap();
+        f(map
+            .entry(label.to_string())
+            .or_insert_with(|| Project::new(settings)))
     }
 }
 
@@ -137,6 +154,16 @@ fn basename(path: &Path) -> String {
 }
 
 impl Project {
+    fn new(settings: ProjectSettings) -> Self {
+        Self {
+            files: Vec::new(),
+            settings,
+            last_export: None,
+            project_path: None,
+            dirty: false,
+        }
+    }
+
     fn view(&self) -> ProjectView {
         ProjectView {
             files: self
@@ -227,19 +254,24 @@ pub fn add_files(
     store: State<'_, GlobalStore>,
     paths: Vec<String>,
 ) -> AddResult {
-    let limits = store.settings().limits();
-    state.with(window.label(), |project| {
-        let mut skipped = Vec::new();
-        project.screen_and_add(
-            paths.iter().map(PathBuf::from).collect(),
-            limits,
-            &mut skipped,
-        );
-        AddResult {
-            project: project.view(),
-            skipped,
-        }
-    })
+    let settings = store.settings();
+    let limits = settings.limits();
+    state.with_default(
+        window.label(),
+        settings.default_project_settings,
+        |project| {
+            let mut skipped = Vec::new();
+            project.screen_and_add(
+                paths.iter().map(PathBuf::from).collect(),
+                limits,
+                &mut skipped,
+            );
+            AddResult {
+                project: project.view(),
+                skipped,
+            }
+        },
+    )
 }
 
 /// List the regular files under a folder (sorted by path) for the add-folder
@@ -357,8 +389,16 @@ pub fn set_order(
 }
 
 #[tauri::command]
-pub fn get_project(window: tauri::Window, state: State<'_, Workareas>) -> ProjectView {
-    state.with(window.label(), |project| project.view())
+pub fn get_project(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    store: State<'_, GlobalStore>,
+) -> ProjectView {
+    state.with_default(
+        window.label(),
+        store.settings().default_project_settings,
+        |project| project.view(),
+    )
 }
 
 #[tauri::command]
@@ -377,9 +417,14 @@ pub fn update_settings(
 }
 
 #[tauri::command]
-pub fn new_project(window: tauri::Window, state: State<'_, Workareas>) -> ProjectView {
+pub fn new_project(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    store: State<'_, GlobalStore>,
+) -> ProjectView {
+    let default_project_settings = store.settings().default_project_settings;
     state.with(window.label(), |project| {
-        *project = Project::default();
+        *project = Project::new(default_project_settings);
         project.view()
     })
 }

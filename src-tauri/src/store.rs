@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
 
+use crate::project::ProjectSettings;
 use crate::state::Limits;
 
 pub const MAX_RECENTS: usize = 12;
@@ -59,6 +60,8 @@ pub struct AppSettings {
     pub max_total_bytes: u64,
     #[serde(default)]
     pub menu_rendering: MenuRendering,
+    #[serde(default)]
+    pub default_project_settings: ProjectSettings,
 }
 
 impl Default for AppSettings {
@@ -68,6 +71,7 @@ impl Default for AppSettings {
             max_file_bytes: default_max_file(),
             max_total_bytes: default_max_total(),
             menu_rendering: MenuRendering::default(),
+            default_project_settings: ProjectSettings::default(),
         }
     }
 }
@@ -186,4 +190,41 @@ pub fn get_recents(store: State<'_, GlobalStore>) -> Vec<String> {
 pub fn clear_recents(app: tauri::AppHandle, store: State<'_, GlobalStore>) {
     store.clear_recents();
     crate::menudef::refresh(&app);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::NewlineSetting;
+
+    #[test]
+    fn app_settings_default_project_settings_falls_back() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(
+            settings.default_project_settings,
+            ProjectSettings::default()
+        );
+    }
+
+    #[test]
+    fn app_settings_default_project_settings_round_trips() {
+        let settings = AppSettings {
+            default_project_settings: ProjectSettings {
+                description: "Starter description".into(),
+                include_description_in_export: false,
+                newlines: NewlineSetting::Platform,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let loaded: AppSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            loaded.default_project_settings,
+            settings.default_project_settings
+        );
+    }
 }
