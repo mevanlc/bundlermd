@@ -55,6 +55,58 @@ pub struct BundleFile {
     pub content: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LineRange {
+    heading: usize,
+    closing_fence: usize,
+}
+
+fn completed_lines_written(s: &str, nl: &str) -> usize {
+    if s.is_empty() {
+        0
+    } else {
+        s.matches(nl).count() + usize::from(!s.ends_with(nl))
+    }
+}
+
+fn file_line_ranges(
+    description: &str,
+    files: &[BundleFile],
+    nl: Newline,
+    toc_line_count: usize,
+) -> Vec<LineRange> {
+    let n = nl.as_str();
+    let mut next_line = 1;
+
+    next_line += 1; // title
+    next_line += 1; // blank after title
+    next_line += completed_lines_written(description, n);
+    next_line += 1; // blank before TOC
+    next_line += 1; // TOC heading
+    next_line += 1; // blank after TOC heading
+    next_line += toc_line_count;
+
+    files
+        .iter()
+        .map(|file| {
+            next_line += 1; // blank before file heading
+            let heading = next_line;
+            next_line += 1; // file heading
+            next_line += 1; // blank before opening fence
+            next_line += 1; // opening fence
+            let content = normalize_newlines(&file.content, nl);
+            next_line += completed_lines_written(&content, n);
+            let closing_fence = next_line;
+            next_line += 1; // closing fence
+
+            LineRange {
+                heading,
+                closing_fence,
+            }
+        })
+        .collect()
+}
+
 /// Assemble the export per the PRD format. `title` falls back upstream
 /// (project title, else .bmd/output basename). An empty description leaves
 /// a blank line in its place. With `toc_links`, TOC entries link to the file
@@ -65,12 +117,19 @@ pub fn assemble(
     files: &[BundleFile],
     nl: Newline,
     toc_links: bool,
+    include_line_ranges_in_headings: bool,
 ) -> String {
     let n = nl.as_str();
     let mut out = String::new();
     let push_line = |out: &mut String, line: &str| {
         out.push_str(line);
         out.push_str(n);
+    };
+    let description = normalize_newlines(description, nl);
+    let line_ranges = if include_line_ranges_in_headings {
+        file_line_ranges(&description, files, nl, files.len())
+    } else {
+        Vec::new()
     };
 
     // Anchors are unique per document, so feed every heading in order.
@@ -80,14 +139,37 @@ pub fn assemble(
     let file_headings: Vec<String> = files
         .iter()
         .enumerate()
-        .map(|(i, f)| format!("File {}: {}", i + 1, f.display))
+        .map(|(i, f)| {
+            let base = format!("File {}: {}", i + 1, f.display);
+            if let Some(range) = line_ranges.get(i) {
+                format!(
+                    "{base} -- (lines {} through {})",
+                    range.heading, range.closing_fence
+                )
+            } else {
+                base
+            }
+        })
+        .collect();
+    let toc_labels: Vec<String> = files
+        .iter()
+        .enumerate()
+        .map(|(i, file)| {
+            if let Some(range) = line_ranges.get(i) {
+                format!(
+                    "{} -- (lines {} through {})",
+                    file.display, range.heading, range.closing_fence
+                )
+            } else {
+                file.display.clone()
+            }
+        })
         .collect();
     let file_anchors: Vec<String> = file_headings.iter().map(|h| slugger.slug(h)).collect();
 
     push_line(&mut out, &format!("# {}", title));
     push_line(&mut out, "");
     if !description.is_empty() {
-        let description = normalize_newlines(description, nl);
         out.push_str(&description);
         if !description.ends_with(n) {
             out.push_str(n);
@@ -96,11 +178,11 @@ pub fn assemble(
     push_line(&mut out, "");
     push_line(&mut out, "## Table of Contents");
     push_line(&mut out, "");
-    for (file, anchor) in files.iter().zip(&file_anchors) {
+    for (label, anchor) in toc_labels.iter().zip(&file_anchors) {
         if toc_links {
-            push_line(&mut out, &format!("- [{}](#{})", file.display, anchor));
+            push_line(&mut out, &format!("- [{}](#{})", label, anchor));
         } else {
-            push_line(&mut out, &format!("- {}", file.display));
+            push_line(&mut out, &format!("- {}", label));
         }
     }
 
@@ -175,7 +257,7 @@ mod tests {
 
     #[test]
     fn assemble_basic_structure() {
-        let out = assemble("My Title", "", &files(), Newline::Unix, false);
+        let out = assemble("My Title", "", &files(), Newline::Unix, false, false);
         let expected = "\
 # My Title
 
@@ -202,13 +284,20 @@ and crlf
 
     #[test]
     fn assemble_includes_description() {
-        let out = assemble("T", "Hello description.", &files(), Newline::Unix, false);
+        let out = assemble(
+            "T",
+            "Hello description.",
+            &files(),
+            Newline::Unix,
+            false,
+            false,
+        );
         assert!(out.starts_with("# T\n\nHello description.\n\n## Table of Contents\n"));
     }
 
     #[test]
     fn assemble_windows_newlines_throughout() {
-        let out = assemble("T", "", &files(), Newline::Windows, false);
+        let out = assemble("T", "", &files(), Newline::Windows, false, false);
         assert!(out.contains("## File 2: b.md\r\n"));
         assert!(out.contains("has ``` fence\r\nand crlf\r\n"));
         assert!(!normalize_newlines(&out, Newline::Unix).contains('\r'));
@@ -226,7 +315,7 @@ and crlf
                 content: "b".into(),
             },
         ];
-        let out = assemble("T", "", &f, Newline::Unix, true);
+        let out = assemble("T", "", &f, Newline::Unix, true, false);
         assert!(out.contains("- [src/config.json](#file-1-srcconfigjson)\n"));
         assert!(out.contains("- [lib/config.json](#file-2-libconfigjson)\n"));
         assert!(out.contains("## File 1: src/config.json\n"));
@@ -238,7 +327,28 @@ and crlf
             display: "x".into(),
             content: "no trailing newline".into(),
         }];
-        let out = assemble("T", "", &f, Newline::Unix, false);
+        let out = assemble("T", "", &f, Newline::Unix, false, false);
         assert!(out.contains("no trailing newline\n```\n"));
+    }
+
+    #[test]
+    fn assemble_can_include_line_ranges_in_file_headings() {
+        let out = assemble("My Title", "", &files(), Newline::Unix, false, true);
+        assert!(out.contains("- a.txt -- (lines 9 through 13)\n"));
+        assert!(out.contains("- b.md -- (lines 15 through 20)\n"));
+        assert!(out.contains("## File 1: a.txt -- (lines 9 through 13)\n"));
+        assert!(out.contains("## File 2: b.md -- (lines 15 through 20)\n"));
+    }
+
+    #[test]
+    fn line_ranges_include_heading_through_closing_fence() {
+        let f = vec![BundleFile {
+            display: "x".into(),
+            content: "no trailing newline".into(),
+        }];
+        let out = assemble("T", "one\ntwo", &f, Newline::Unix, false, true);
+        let lines: Vec<_> = out.lines().collect();
+        assert_eq!(lines[9], "## File 1: x -- (lines 10 through 14)");
+        assert_eq!(lines[13], "```");
     }
 }

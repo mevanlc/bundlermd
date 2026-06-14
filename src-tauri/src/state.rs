@@ -702,6 +702,7 @@ pub fn generate_bundle(
         &bundle_files,
         settings.newlines.resolve(),
         settings.toc_links,
+        settings.include_line_ranges_in_headings,
     );
     (markdown, problems)
 }

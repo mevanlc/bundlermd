@@ -52,6 +52,7 @@ pub enum PathPresentation {
 pub struct ProjectSettings {
     pub description: String,
     pub include_description_in_export: bool,
+    pub include_line_ranges_in_headings: bool,
     pub newlines: NewlineSetting,
     pub path_presentation: PathPresentation,
     pub toc_links: bool,
@@ -62,6 +63,7 @@ impl Default for ProjectSettings {
         Self {
             description: String::new(),
             include_description_in_export: true,
+            include_line_ranges_in_headings: false,
             newlines: NewlineSetting::Unix,
             path_presentation: PathPresentation::Smart,
             toc_links: false,
@@ -164,6 +166,7 @@ mod tests {
             ProjectSettings {
                 description: "Description".into(),
                 include_description_in_export: true,
+                include_line_ranges_in_headings: true,
                 newlines: NewlineSetting::Platform,
                 path_presentation: PathPresentation::Absolute,
                 toc_links: true,
@@ -199,6 +202,34 @@ mod tests {
         .unwrap();
         let loaded = ProjectFile::load(&path).unwrap();
         assert_eq!(loaded.settings, ProjectSettings::default());
+    }
+
+    #[test]
+    fn missing_setting_fields_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old-settings.bmd");
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{
+                    "$schema": "{SCHEMA_URL}",
+                    "files": ["/x.txt"],
+                    "last_export": null,
+                    "settings": {{
+                        "description": "Old project",
+                        "include_description_in_export": true,
+                        "newlines": "unix",
+                        "path_presentation": {{ "mode": "smart" }},
+                        "toc_links": false
+                    }}
+                }}"#
+            ),
+        )
+        .unwrap();
+
+        let loaded = ProjectFile::load(&path).unwrap();
+        assert_eq!(loaded.settings.description, "Old project");
+        assert!(!loaded.settings.include_line_ranges_in_headings);
     }
 
     #[test]

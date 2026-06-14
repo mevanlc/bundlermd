@@ -39,6 +39,11 @@
           "default": true,
           "description": "Whether the description text is emitted after the title and before the Table of Contents."
         },
+        "include_line_ranges_in_headings": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether file headings and Table of Contents entries include the line range from the heading line through the closing code fence line."
+        },
         "newlines": {
           "type": "string",
           "enum": ["unix", "windows", "platform"],

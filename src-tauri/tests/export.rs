@@ -102,6 +102,38 @@ fn export_disambiguates_collisions_with_toc_links() {
     assert!(markdown.contains("## File 2: beta/config.json\n"));
 }
 
+#[test]
+fn export_can_include_line_ranges_in_toc_and_headings() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.txt");
+    let b = dir.path().join("b.txt");
+    std::fs::write(&a, "one\n").unwrap();
+    std::fs::write(&b, "two\nthree").unwrap();
+    let settings = ProjectSettings {
+        include_line_ranges_in_headings: true,
+        ..Default::default()
+    };
+    let (markdown, problems) = generate_bundle(
+        &[a, b],
+        &settings,
+        None,
+        Path::new("/tmp/out.md"),
+        Limits::default(),
+    );
+
+    assert!(problems.is_empty());
+    assert!(markdown.contains("- a.txt -- (lines 9 through 13)\n"));
+    assert!(markdown.contains("- b.txt -- (lines 15 through 20)\n"));
+    assert!(markdown.contains("## File 1: a.txt -- (lines 9 through 13)\n"));
+    assert!(markdown.contains("## File 2: b.txt -- (lines 15 through 20)\n"));
+
+    let lines: Vec<_> = markdown.lines().collect();
+    assert_eq!(lines[8], "## File 1: a.txt -- (lines 9 through 13)");
+    assert_eq!(lines[12], "```");
+    assert_eq!(lines[14], "## File 2: b.txt -- (lines 15 through 20)");
+    assert_eq!(lines[19], "```");
+}
+
 /// Phase 3: size limits enforced at export time (tested with tiny limits;
 /// the real defaults are 200 MB / 250 MB).
 #[test]

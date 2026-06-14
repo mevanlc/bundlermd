@@ -31,6 +31,7 @@ type PathPresentation = { mode: "smart" } | { mode: "absolute" };
 interface ProjectSettings {
   description: string;
   include_description_in_export: boolean;
+  include_line_ranges_in_headings: boolean;
   newlines: "unix" | "windows" | "platform";
   path_presentation: PathPresentation;
   toc_links: boolean;
@@ -429,6 +430,20 @@ function ProjectSettingsEditor({
         />
         Generate internal links in Table of Contents
       </label>
+
+      <label className="radio">
+        <input
+          type="checkbox"
+          checked={draft.include_line_ranges_in_headings}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              include_line_ranges_in_headings: e.target.checked,
+            })
+          }
+        />
+        Include line number range in file headings
+      </label>
     </>
   );
 }
@@ -438,6 +453,7 @@ const EMPTY_PROJECT: ProjectView = {
   settings: {
     description: "",
     include_description_in_export: true,
+    include_line_ranges_in_headings: false,
     newlines: "unix",
     path_presentation: { mode: "smart" },
     toc_links: false,
