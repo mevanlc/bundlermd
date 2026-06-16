@@ -158,8 +158,13 @@ button:disabled {
   line-height: 1;
 }
 
-.export-btn {
+.export-split {
+  position: relative;
+  display: inline-flex;
   margin-left: auto;
+}
+
+.export-btn {
   background: #5a9e6f;
   border-color: #4c8a5f;
   color: #fff;
@@ -167,6 +172,45 @@ button:disabled {
 
 .export-btn:hover:not(:disabled) {
   background: #4f9163;
+}
+
+.export-primary {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.export-toggle {
+  min-width: 2.1rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+  border-left-color: #76b386;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.export-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  z-index: 20;
+  min-width: 12rem;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  box-shadow: 0 8px 18px rgb(0 0 0 / 14%);
+}
+
+.export-menu li {
+  padding: 0.35rem 0.75rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.export-menu li:hover {
+  background: #f0f6ff;
 }
 
 .remove-btn {
@@ -700,7 +744,8 @@ fieldset.field {
   }
 
   .mb-drop,
-  .mb-submenu {
+  .mb-submenu,
+  .export-menu {
     background: #2c2c2e;
     border-color: #444;
   }
@@ -713,5 +758,9 @@ fieldset.field {
   .mb-drop li.disabled,
   .mb-drop li.disabled:hover {
     color: #777;
+  }
+
+  .export-menu li:hover {
+    background: #3c4654;
   }
 }

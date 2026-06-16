@@ -9,6 +9,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 - **Project files** (`.bmd`) save and restore the file list, settings, and last export path
 - **Smart Relative paths** in the bundle: files under the project folder are shown relative to it; others get the shortest unambiguous name
 - **Size limits**: configurable per-file and total caps; oversized files are reported and skipped, not silently dropped
+- **Copy bundle to clipboard** from the Export split button or Project menu
 - **Missing-file highlighting**: files deleted from disk turn red within about a second
 - **Multi-window**: one project per window; opening an already-open project focuses its window instead of loading it again
 - **Recents** menu (12 entries, global, persisted across restarts)

@@ -18,6 +18,7 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state::Workareas::default())
         .setup(|app| {
@@ -57,6 +58,7 @@ pub fn run() {
             state::save_project,
             state::open_project,
             state::export_bundle,
+            state::render_bundle_for_clipboard,
             state::host_os,
             store::get_app_settings,
             store::set_app_settings,

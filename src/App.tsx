@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-table";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import menuJson from "./menu.json";
 import "./App.css";
@@ -64,6 +65,11 @@ interface ExportResult {
   problems: Problem[];
 }
 
+interface BundleTextResult {
+  markdown: string;
+  problems: Problem[];
+}
+
 interface ContextMenuState {
   x: number;
   y: number;
@@ -90,6 +96,10 @@ interface FolderPreviewFile {
   importable: boolean;
   note: string;
 }
+
+type PendingProblemAction =
+  | { kind: "export"; outputPath: string }
+  | { kind: "copy" };
 
 /** Mirrors the node shapes in src/menu.json (shared with the Rust side). */
 type MenuItemDef =
@@ -650,11 +660,11 @@ export default function App() {
   const [project, setProject] = useState<ProjectView>(EMPTY_PROJECT);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [problems, setProblems] = useState<Problem[] | null>(null);
-  const [pendingExportPath, setPendingExportPath] = useState<string | null>(
-    null,
-  );
+  const [pendingProblemAction, setPendingProblemAction] =
+    useState<PendingProblemAction | null>(null);
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<ProjectSettings | null>(
     null,
   );
@@ -688,6 +698,7 @@ export default function App() {
     save: () => void saveProject(false),
     save_as: () => void saveProject(true),
     export: () => void exportBundle(),
+    copy_bundle: () => void copyBundle(),
     project_settings: () => setSettingsDraft(projectRef.current.settings),
     app_settings: () => {
       if (appSettings) setAppSettingsDraft(appSettings);
@@ -755,7 +766,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const close = () => setMenu(null);
+    const close = () => {
+      setMenu(null);
+      setExportMenuOpen(false);
+    };
     window.addEventListener("click", close);
     window.addEventListener("blur", close);
     return () => {
@@ -775,8 +789,9 @@ export default function App() {
     else if (pendingAction) setPendingAction(null);
     else if (problems) {
       setProblems(null);
-      setPendingExportPath(null);
+      setPendingProblemAction(null);
     } else if (skipped.length > 0) setSkipped([]);
+    else if (exportMenuOpen) setExportMenuOpen(false);
     else if (menu) setMenu(null);
   };
   useEffect(() => {
@@ -933,12 +948,12 @@ export default function App() {
       });
       if (result.written) {
         setProblems(null);
-        setPendingExportPath(null);
+        setPendingProblemAction(null);
         setStatusMsg(`Exported to ${outputPath}`);
         setProject(await invoke<ProjectView>("get_project"));
       } else {
         setProblems(result.problems);
-        setPendingExportPath(outputPath);
+        setPendingProblemAction({ kind: "export", outputPath });
       }
     } catch (e) {
       setStatusMsg(String(e));
@@ -953,6 +968,32 @@ export default function App() {
     if (!outputPath) return;
     setStatusMsg("");
     await runExport(outputPath, false);
+  }
+
+  async function runCopyBundle(allowProblems: boolean) {
+    try {
+      const result = await invoke<BundleTextResult>(
+        "render_bundle_for_clipboard",
+        { allowProblems },
+      );
+      if (result.problems.length > 0 && !allowProblems) {
+        setProblems(result.problems);
+        setPendingProblemAction({ kind: "copy" });
+        return;
+      }
+      await writeText(result.markdown);
+      setProblems(null);
+      setPendingProblemAction(null);
+      setStatusMsg("Copied bundle to clipboard");
+    } catch (e) {
+      setStatusMsg(String(e));
+    }
+  }
+
+  async function copyBundle() {
+    setExportMenuOpen(false);
+    setStatusMsg("");
+    await runCopyBundle(false);
   }
 
   async function onRowDrop(index: number) {
@@ -1004,6 +1045,7 @@ export default function App() {
   }
 
   const draft = settingsDraft;
+  const pendingProblem = pendingProblemAction;
 
   return (
     <main className="app" onContextMenu={(e) => e.preventDefault()}>
@@ -1022,13 +1064,33 @@ export default function App() {
         >
           ⓘ
         </button>
-        <button
-          className="export-btn"
-          onClick={() => void exportBundle()}
-          disabled={project.files.length === 0}
-        >
-          Export Bundle…
-        </button>
+        <div className="export-split">
+          <button
+            className="export-btn export-primary"
+            onClick={() => void exportBundle()}
+            disabled={project.files.length === 0}
+          >
+            Export Bundle…
+          </button>
+          <button
+            className="export-btn export-toggle"
+            title="More export actions"
+            aria-label="More export actions"
+            aria-expanded={exportMenuOpen}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExportMenuOpen((open) => !open);
+            }}
+            disabled={project.files.length === 0}
+          >
+            ▾
+          </button>
+          {exportMenuOpen && (
+            <ul className="export-menu" onClick={(e) => e.stopPropagation()}>
+              <li onClick={() => void copyBundle()}>Copy to Clipboard</li>
+            </ul>
+          )}
+        </div>
       </header>
 
       {project.files.length === 0 ? (
@@ -1405,12 +1467,17 @@ export default function App() {
         </div>
       )}
 
-      {problems && pendingExportPath && (
+      {problems && pendingProblem && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h2>Problems during export</h2>
+            <h2>
+              Problems during {pendingProblem.kind === "copy" ? "copy" : "export"}
+            </h2>
             <p>
-              The following files could not be included. Save the export anyway
+              The following files could not be included.{" "}
+              {pendingProblem.kind === "copy"
+                ? "Copy the bundle anyway"
+                : "Save the export anyway"}{" "}
               (without them), or cancel to fix the issues and retry.
             </p>
             <ul className="problem-list">
@@ -1422,13 +1489,21 @@ export default function App() {
               ))}
             </ul>
             <div className="modal-buttons">
-              <button onClick={() => void runExport(pendingExportPath, true)}>
-                Save anyway
+              <button
+                onClick={() => {
+                  if (pendingProblem.kind === "copy") {
+                    void runCopyBundle(true);
+                  } else {
+                    void runExport(pendingProblem.outputPath, true);
+                  }
+                }}
+              >
+                {pendingProblem.kind === "copy" ? "Copy anyway" : "Save anyway"}
               </button>
               <button
                 onClick={() => {
                   setProblems(null);
-                  setPendingExportPath(null);
+                  setPendingProblemAction(null);
                 }}
               >
                 Cancel

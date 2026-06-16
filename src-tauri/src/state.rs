@@ -142,6 +142,12 @@ pub struct ExportResult {
     pub problems: Vec<Problem>,
 }
 
+#[derive(Serialize)]
+pub struct BundleTextResult {
+    pub markdown: String,
+    pub problems: Vec<Problem>,
+}
+
 /// Round-figure rendering for limit values in user-facing messages
 /// (limits are set in round decimal bytes, e.g. 200,000,000 → "200 MB").
 fn human_bytes(bytes: u64) -> String {
@@ -634,6 +640,37 @@ pub fn export_bundle(
     })
 }
 
+/// Generate the bundle for clipboard copy. This mirrors export problem handling
+/// but intentionally does not touch `last_export` or dirty state.
+#[tauri::command]
+pub fn render_bundle_for_clipboard(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    store: State<'_, GlobalStore>,
+    allow_problems: bool,
+) -> Result<BundleTextResult, String> {
+    let limits = store.settings().limits();
+    let (markdown, problems) = state.with(window.label(), |project| {
+        let title = effective_title(project.project_path.as_deref(), Path::new("Untitled.md"));
+        generate_bundle_with_title(
+            &project.files,
+            &project.settings,
+            project.project_path.as_deref(),
+            &title,
+            limits,
+        )
+    });
+
+    if !problems.is_empty() && !allow_problems {
+        return Ok(BundleTextResult {
+            markdown: String::new(),
+            problems,
+        });
+    }
+
+    Ok(BundleTextResult { markdown, problems })
+}
+
 /// Best-effort bundle generation: problem files are reported and omitted.
 /// Every check is re-done here regardless of what add-time screening saw —
 /// files can be deleted, grow, lose permissions, or turn binary in between.
@@ -642,6 +679,17 @@ pub fn generate_bundle(
     settings: &ProjectSettings,
     project_path: Option<&Path>,
     output: &Path,
+    limits: Limits,
+) -> (String, Vec<Problem>) {
+    let title = effective_title(project_path, output);
+    generate_bundle_with_title(files, settings, project_path, &title, limits)
+}
+
+fn generate_bundle_with_title(
+    files: &[PathBuf],
+    settings: &ProjectSettings,
+    project_path: Option<&Path>,
+    title: &str,
     limits: Limits,
 ) -> (String, Vec<Problem>) {
     let dir = project_dir(project_path);
@@ -690,14 +738,13 @@ pub fn generate_bundle(
         }
     }
 
-    let title = effective_title(project_path, output);
     let description = if settings.include_description_in_export {
         settings.description.as_str()
     } else {
         ""
     };
     let markdown = bundle::assemble(
-        &title,
+        title,
         description,
         &bundle_files,
         settings.newlines.resolve(),
