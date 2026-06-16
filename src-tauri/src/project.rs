@@ -50,6 +50,7 @@ pub enum PathPresentation {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct ProjectSettings {
+    pub add_detected_language_tag_to_code_fences: bool,
     pub description: String,
     pub include_description_in_export: bool,
     pub include_line_ranges_in_headings: bool,
@@ -61,6 +62,7 @@ pub struct ProjectSettings {
 impl Default for ProjectSettings {
     fn default() -> Self {
         Self {
+            add_detected_language_tag_to_code_fences: true,
             description: String::new(),
             include_description_in_export: true,
             include_line_ranges_in_headings: false,
@@ -164,6 +166,7 @@ mod tests {
             vec!["/a/b.txt".into(), "/c/d.txt".into()],
             Some("/out.md".into()),
             ProjectSettings {
+                add_detected_language_tag_to_code_fences: false,
                 description: "Description".into(),
                 include_description_in_export: true,
                 include_line_ranges_in_headings: true,
@@ -229,6 +232,7 @@ mod tests {
 
         let loaded = ProjectFile::load(&path).unwrap();
         assert_eq!(loaded.settings.description, "Old project");
+        assert!(loaded.settings.add_detected_language_tag_to_code_fences);
         assert!(!loaded.settings.include_line_ranges_in_headings);
     }
 

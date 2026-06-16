@@ -51,8 +51,8 @@ file reported in the problems dialog.
 - `.bmd` JSON schema with schema-filename versioning; load/save in Rust with serde.
 - Save / Save As / Open / New; dirty tracking; close-with-unsaved-changes prompt
   (typical document-editor UX per PRD).
-- Project Info dialog: Description, Output newlines (Unix / Windows /
-  Platform Default) — all wired into export.
+- Project Info dialog: Description, detected language tags on code fences, Output newlines
+  (Unix / Windows / Platform Default) — all wired into export.
 - Path Presentation setting: Absolute and **Smart** (common-prefix-under-`.bmd`-dir rule plus
   the progressive basename-disambiguation algorithm). It governs both how paths are stored in
   the `.bmd` and how they're rendered in the bundle. Smart is the algorithmically interesting
@@ -126,5 +126,3 @@ recents focuses A's window; theme change applies to both windows.
 - Watching files with OS-level notifications instead of 1 s polling.
 - Streaming export (current design reads files into memory; acceptable under the 200 MB /
   250 MB limits).
-- Language tags on code fences inferred from file extension — nice-to-have; revisit
-  post-v1.

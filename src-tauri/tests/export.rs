@@ -52,16 +52,16 @@ fn export_over_fixture_set() {
     assert!(!markdown.contains("binary.bin"));
 
     // CRLF content is normalized to Unix.
-    assert!(markdown.contains("## File 2: crlf.txt\n\n```\nline one\nline two\n```\n"));
+    assert!(markdown.contains("## File 2: crlf.txt\n\n```text\nline one\nline two\n```\n"));
     assert!(!markdown.contains('\r'));
 
     // The four-backtick run forces a five-backtick fence.
     assert!(markdown.contains(
-        "## File 3: backticks.md\n\n`````\nhas a ```` four-backtick run\nand ``` three\n`````\n"
+        "## File 3: backticks.md\n\n`````markdown\nhas a ```` four-backtick run\nand ``` three\n`````\n"
     ));
 
     // UTF-16 with BOM decoded to text, BOM stripped.
-    assert!(markdown.contains("## File 4: utf16le_bom.txt\n\n```\nhi\n```\n"));
+    assert!(markdown.contains("## File 4: utf16le_bom.txt\n\n```text\nhi\n```\n"));
 }
 
 /// Phase 2 exit criteria: colliding basenames are disambiguated in headers
@@ -209,4 +209,24 @@ fn export_can_omit_description() {
     assert!(problems.is_empty());
     assert!(markdown.starts_with("# out\n\n\n## Table of Contents\n"));
     assert!(!markdown.contains("Hidden description"));
+}
+
+#[test]
+fn export_can_omit_detected_language_tags() {
+    let files = vec![fixture("plain.txt")];
+    let settings = ProjectSettings {
+        add_detected_language_tag_to_code_fences: false,
+        ..Default::default()
+    };
+    let (markdown, problems) = generate_bundle(
+        &files,
+        &settings,
+        None,
+        Path::new("/tmp/out.md"),
+        Limits::default(),
+    );
+
+    assert!(problems.is_empty());
+    assert!(markdown.contains("## File 1: plain.txt\n\n```\nplain text file\n```\n"));
+    assert!(!markdown.contains("```text\n"));
 }

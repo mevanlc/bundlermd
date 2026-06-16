@@ -52,6 +52,8 @@ pub struct BundleFile {
     /// Path as presented per the project's Path Presentation setting
     /// (bare basenames in Phase 1).
     pub display: String,
+    /// Optional Markdown info string appended to the opening code fence.
+    pub fence_tag: Option<String>,
     pub content: String,
 }
 
@@ -191,7 +193,11 @@ pub fn assemble(
         push_line(&mut out, "");
         push_line(&mut out, &format!("## {}", heading));
         push_line(&mut out, "");
-        push_line(&mut out, &fence);
+        if let Some(tag) = &file.fence_tag {
+            push_line(&mut out, &format!("{fence}{tag}"));
+        } else {
+            push_line(&mut out, &fence);
+        }
         let content = normalize_newlines(&file.content, nl);
         out.push_str(&content);
         if !content.is_empty() && !content.ends_with(n) {
@@ -246,10 +252,12 @@ mod tests {
         vec![
             BundleFile {
                 display: "a.txt".into(),
+                fence_tag: None,
                 content: "alpha\n".into(),
             },
             BundleFile {
                 display: "b.md".into(),
+                fence_tag: None,
                 content: "has ``` fence\r\nand crlf".into(),
             },
         ]
@@ -296,6 +304,17 @@ and crlf
     }
 
     #[test]
+    fn assemble_adds_code_fence_tags() {
+        let f = vec![BundleFile {
+            display: "main.rs".into(),
+            fence_tag: Some("rust".into()),
+            content: "fn main() {}\n".into(),
+        }];
+        let out = assemble("T", "", &f, Newline::Unix, false, false);
+        assert!(out.contains("```rust\nfn main() {}\n```\n"));
+    }
+
+    #[test]
     fn assemble_windows_newlines_throughout() {
         let out = assemble("T", "", &files(), Newline::Windows, false, false);
         assert!(out.contains("## File 2: b.md\r\n"));
@@ -308,10 +327,12 @@ and crlf
         let f = vec![
             BundleFile {
                 display: "src/config.json".into(),
+                fence_tag: None,
                 content: "a".into(),
             },
             BundleFile {
                 display: "lib/config.json".into(),
+                fence_tag: None,
                 content: "b".into(),
             },
         ];
@@ -325,6 +346,7 @@ and crlf
     fn assemble_adds_trailing_newline_before_closing_fence() {
         let f = vec![BundleFile {
             display: "x".into(),
+            fence_tag: None,
             content: "no trailing newline".into(),
         }];
         let out = assemble("T", "", &f, Newline::Unix, false, false);
@@ -344,6 +366,7 @@ and crlf
     fn line_ranges_include_heading_through_closing_fence() {
         let f = vec![BundleFile {
             display: "x".into(),
+            fence_tag: None,
             content: "no trailing newline".into(),
         }];
         let out = assemble("T", "one\ntwo", &f, Newline::Unix, false, true);

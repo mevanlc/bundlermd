@@ -41,6 +41,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 ````
 
 - File content is wrapped in code fences sized to never conflict with content (min 3 backticks; one more than the longest run in the file)
+- Opening code fences can include GitHub Linguist-style language tags when BundlerMD can infer one from the filename, extension, or content
 - Newlines are normalized to Unix, Windows, or platform-default — your choice per project
 - Table of Contents entries optionally link to their sections via GitHub-style anchors
 - File headings and Table of Contents entries can optionally include a line range, e.g. `-- (lines M through N)`, from the heading line through the closing code fence line
@@ -85,6 +86,7 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
   "files": ["src/file1.rs", "lib/helper.py", "/outside/project/shared.rs"],
   "last_export": "/abs/path/bundle.md",
   "settings": {
+    "add_detected_language_tag_to_code_fences": true,
     "description": "",
     "include_description_in_export": true,
     "include_line_ranges_in_headings": false,

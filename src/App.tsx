@@ -30,6 +30,7 @@ interface FileRow {
 type PathPresentation = { mode: "smart" } | { mode: "absolute" };
 
 interface ProjectSettings {
+  add_detected_language_tag_to_code_fences: boolean;
   description: string;
   include_description_in_export: boolean;
   include_line_ranges_in_headings: boolean;
@@ -454,6 +455,20 @@ function ProjectSettingsEditor({
         />
         Include line number range in file headings
       </label>
+
+      <label className="radio">
+        <input
+          type="checkbox"
+          checked={draft.add_detected_language_tag_to_code_fences}
+          onChange={(e) =>
+            setDraft({
+              ...draft,
+              add_detected_language_tag_to_code_fences: e.target.checked,
+            })
+          }
+        />
+        Add detected language tag to code fences
+      </label>
     </>
   );
 }
@@ -461,6 +476,7 @@ function ProjectSettingsEditor({
 const EMPTY_PROJECT: ProjectView = {
   files: [],
   settings: {
+    add_detected_language_tag_to_code_fences: true,
     description: "",
     include_description_in_export: true,
     include_line_ranges_in_headings: false,

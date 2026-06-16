@@ -29,6 +29,11 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "add_detected_language_tag_to_code_fences": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether opening code fences include detected GitHub Linguist-style language tags when BundlerMD can infer one."
+        },
         "description": {
           "type": "string",
           "description": "Project description text.",

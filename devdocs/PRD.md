@@ -60,6 +60,9 @@ Accessed via a **Project Info...** button which opens a dialog.
   file heading and Table of Contents entry appends ` -- (lines M through N)`,
   where `M` is the line number of the heading and `N` is the line number of the
   file content code fence's closing backticks.
+- **Add detected language tag to code fences** — checkbox, on by default. When checked,
+  opening code fences append a GitHub Linguist-style language tag when BundlerMD can
+  infer one from the filename, extension, or content.
 - **Output newlines** — `(o) Always Unix` `( ) Always Windows` `( ) Platform Default`.
   All newlines in exported content are normalized to this setting; e.g. a source file
   containing CRLF does not cause CRLF to be emitted when the project is set to Always Unix.
@@ -104,7 +107,7 @@ Structure (pseudo-Mustache; heading depths are part of the format):
 
 ## File {{ n }}: {{ presented_path }}{{ optional_line_range_suffix }}
 
-{{ fence }}
+{{ fence }}{{ optional_linguist_language_tag }}
 {{ file content, newline-normalized }}
 {{ fence }}
 `````
@@ -117,8 +120,11 @@ Structure (pseudo-Mustache; heading depths are part of the format):
   Table of Contents entry and the file heading. `M` is the file heading's line number and
   `N` is the line containing the closing backticks for that file's content code fence.
 - `fence`: scan the file's content for its longest uninterrupted run of backticks; the fence
-  uses that count plus one, with a minimum of 3. Headings or other markdown inside a file's
-  content live within its code fence, which is acceptable.
+  uses that count plus one, with a minimum of 3. When **Add detected language tag to code
+  fences** is checked and a language can be inferred from the filename, extension, or content,
+  the opening fence appends Linguist's default language alias as its Markdown info string.
+  Headings or other markdown inside a file's content live within its code fence, which is
+  acceptable.
 
 ### Export error handling
 

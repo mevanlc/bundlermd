@@ -1,5 +1,6 @@
 pub mod anchors;
 pub mod bundle;
+pub mod lang;
 pub mod menudef;
 pub mod project;
 pub mod reading;

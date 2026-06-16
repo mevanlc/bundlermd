@@ -725,7 +725,15 @@ fn generate_bundle_with_title(
             Ok(FileContent::Text(content)) => {
                 // Only included files count toward the total.
                 total += size;
-                bundle_files.push(BundleFile { display, content });
+                let fence_tag = settings
+                    .add_detected_language_tag_to_code_fences
+                    .then(|| crate::lang::fence_tag(path, &content))
+                    .flatten();
+                bundle_files.push(BundleFile {
+                    display,
+                    fence_tag,
+                    content,
+                });
             }
             Ok(FileContent::Binary) => problems.push(Problem {
                 path: path.display().to_string(),
