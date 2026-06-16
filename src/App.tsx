@@ -18,6 +18,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import menuJson from "./menu.json";
+import previewIconUrl from "./assets/preview.svg";
 import "./App.css";
 
 interface FileRow {
@@ -100,7 +101,8 @@ interface FolderPreviewFile {
 
 type PendingProblemAction =
   | { kind: "export"; outputPath: string }
-  | { kind: "copy" };
+  | { kind: "copy" }
+  | { kind: "preview" };
 
 /** Mirrors the node shapes in src/menu.json (shared with the Rust side). */
 type MenuItemDef =
@@ -120,6 +122,39 @@ const NATURAL_PATH_COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
+
+function problemActionTitle(kind: PendingProblemAction["kind"]): string {
+  switch (kind) {
+    case "copy":
+      return "copy";
+    case "preview":
+      return "preview";
+    case "export":
+      return "export";
+  }
+}
+
+function problemActionPrompt(kind: PendingProblemAction["kind"]): string {
+  switch (kind) {
+    case "copy":
+      return "Copy the bundle anyway";
+    case "preview":
+      return "Render the preview anyway";
+    case "export":
+      return "Save the export anyway";
+  }
+}
+
+function problemActionButton(kind: PendingProblemAction["kind"]): string {
+  switch (kind) {
+    case "copy":
+      return "Copy anyway";
+    case "preview":
+      return "Preview anyway";
+    case "export":
+      return "Save anyway";
+  }
+}
 
 function formatAccel(accelerator?: string): string {
   if (!accelerator) return "";
@@ -672,6 +707,31 @@ function FolderPreviewTable({
   );
 }
 
+function BundlePreview({
+  html,
+  onClose,
+}: {
+  html: string;
+  onClose: () => void;
+}) {
+  return (
+    <section className="bundle-preview-wrap">
+      <button
+        className="preview-close"
+        title="Close preview"
+        aria-label="Close preview"
+        onClick={onClose}
+      >
+        ×
+      </button>
+      <article
+        className="bundle-preview"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </section>
+  );
+}
+
 export default function App() {
   const [project, setProject] = useState<ProjectView>(EMPTY_PROJECT);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
@@ -681,6 +741,7 @@ export default function App() {
   const [statusMsg, setStatusMsg] = useState<string>("");
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<ProjectSettings | null>(
     null,
   );
@@ -767,6 +828,10 @@ export default function App() {
     void getCurrentWindow().setTitle(`${name}${dirtyMark}${suffix}`);
   }, [project.project_path, project.dirty, isMacOS]);
 
+  useEffect(() => {
+    setPreviewHtml(null);
+  }, [project.files, project.settings, project.project_path]);
+
   // Missing-file detection: re-poll the backend (which stats every file)
   // about once a second; only re-render when something actually changed.
   // Export-time re-checks remain the functional gate — this is cosmetic.
@@ -809,6 +874,7 @@ export default function App() {
     } else if (skipped.length > 0) setSkipped([]);
     else if (exportMenuOpen) setExportMenuOpen(false);
     else if (menu) setMenu(null);
+    else if (previewHtml !== null) setPreviewHtml(null);
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1012,6 +1078,38 @@ export default function App() {
     await runCopyBundle(false);
   }
 
+  async function runPreview(allowProblems: boolean) {
+    try {
+      const result = await invoke<BundleTextResult>(
+        "render_bundle_for_clipboard",
+        { allowProblems },
+      );
+      if (result.problems.length > 0 && !allowProblems) {
+        setProblems(result.problems);
+        setPendingProblemAction({ kind: "preview" });
+        return;
+      }
+      setStatusMsg("Rendering preview...");
+      const { renderMarkdownPreview } = await import("./markdownPreview");
+      setPreviewHtml(renderMarkdownPreview(result.markdown));
+      setProblems(null);
+      setPendingProblemAction(null);
+      setStatusMsg(
+        result.problems.length > 0
+          ? "Preview generated with omitted files"
+          : "Preview generated",
+      );
+    } catch (e) {
+      setStatusMsg(String(e));
+    }
+  }
+
+  async function previewBundle() {
+    setExportMenuOpen(false);
+    setStatusMsg("");
+    await runPreview(false);
+  }
+
   async function onRowDrop(index: number) {
     const from = dragIndex.current;
     dragIndex.current = null;
@@ -1080,6 +1178,15 @@ export default function App() {
         >
           ⓘ
         </button>
+        <button
+          className="preview-btn"
+          title="Preview Bundle"
+          aria-label="Preview Bundle"
+          onClick={() => void previewBundle()}
+          disabled={project.files.length === 0}
+        >
+          <img src={previewIconUrl} alt="" draggable={false} />
+        </button>
         <div className="export-split">
           <button
             className="export-btn export-primary"
@@ -1109,7 +1216,12 @@ export default function App() {
         </div>
       </header>
 
-      {project.files.length === 0 ? (
+      {previewHtml !== null ? (
+        <BundlePreview
+          html={previewHtml}
+          onClose={() => setPreviewHtml(null)}
+        />
+      ) : project.files.length === 0 ? (
         <div className="empty-hint">
           Use “Add Files…” or “Add Folder…” to get started
         </div>
@@ -1486,14 +1598,10 @@ export default function App() {
       {problems && pendingProblem && (
         <div className="modal-backdrop">
           <div className="modal">
-            <h2>
-              Problems during {pendingProblem.kind === "copy" ? "copy" : "export"}
-            </h2>
+            <h2>Problems during {problemActionTitle(pendingProblem.kind)}</h2>
             <p>
               The following files could not be included.{" "}
-              {pendingProblem.kind === "copy"
-                ? "Copy the bundle anyway"
-                : "Save the export anyway"}{" "}
+              {problemActionPrompt(pendingProblem.kind)}{" "}
               (without them), or cancel to fix the issues and retry.
             </p>
             <ul className="problem-list">
@@ -1509,12 +1617,14 @@ export default function App() {
                 onClick={() => {
                   if (pendingProblem.kind === "copy") {
                     void runCopyBundle(true);
+                  } else if (pendingProblem.kind === "preview") {
+                    void runPreview(true);
                   } else {
                     void runExport(pendingProblem.outputPath, true);
                   }
                 }}
               >
-                {pendingProblem.kind === "copy" ? "Copy anyway" : "Save anyway"}
+                {problemActionButton(pendingProblem.kind)}
               </button>
               <button
                 onClick={() => {

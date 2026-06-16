@@ -17,6 +17,9 @@ records the architectural decisions the PRD leaves open.
 - **Export is a pure function** in Rust: `(project state, file contents) → bundle string +
   problem list`. Fence sizing, newline normalization, path presentation, TOC/anchor
   generation are all deterministic and unit-testable with no UI involved.
+- **Preview renders the Rust-generated bundle string** in the frontend with a lazy-loaded
+  Markdown renderer and syntax highlighter, so it stays identical to Export/Copy output
+  without putting HTML rendering concerns in the Rust core.
 - **Global state** (Recents, App Settings) is a small Rust-owned store persisted to the
   platform config directory, shared across windows.
 
@@ -67,6 +70,9 @@ basenames exports with correctly disambiguated headers and working TOC links on 
 - Missing-file red highlighting with ~1 s polling; re-verified state when files return.
 - Folder drop/browse: preview dialog, immediate-children vs. recursive import, batched
   skip warnings.
+- Preview Bundle button: generate the same bundle text used by Export/Copy, replace the
+  workarea with rendered Markdown, syntax-highlight code fences, and close back to the
+  file list with an `x` control.
 - Size limits (per-file and total-export) enforced at add and export time, surfaced through
   the existing batched-warning and export-problems flows.
 - Export-time re-checks hardened: file deleted, permission denied, became binary, over
