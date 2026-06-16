@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 use crate::bundle::{self, BundleFile};
 use crate::project::{
@@ -80,6 +80,20 @@ impl Workareas {
         f(map
             .entry(label.to_string())
             .or_insert_with(|| Project::new(settings)))
+    }
+}
+
+/// OS-level "open with BundlerMD" requests can arrive before the frontend has
+/// registered listeners. Keep them here until a window explicitly drains them.
+#[derive(Default)]
+pub struct PendingOpenProjects(Mutex<Vec<String>>);
+
+impl PendingOpenProjects {
+    fn push(&self, paths: Vec<String>) {
+        if paths.is_empty() {
+            return;
+        }
+        self.0.lock().unwrap().extend(paths);
     }
 }
 
@@ -190,6 +204,72 @@ fn screen_import(path: &Path, total: &mut u64, limits: Limits) -> Option<String>
         }
         Ok(FileContent::Binary) => Some("Binary File".into()),
         Err(e) => Some(e.to_string()),
+    }
+}
+
+fn is_bmd_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("bmd"))
+}
+
+fn normalize_open_project_path(path: PathBuf, cwd: Option<&Path>) -> Option<String> {
+    let path = if path.is_absolute() {
+        path
+    } else {
+        cwd?.join(path)
+    };
+    if !is_bmd_path(&path) {
+        return None;
+    }
+    Some(path.canonicalize().unwrap_or(path).display().to_string())
+}
+
+fn open_project_path_from_arg(arg: &str, cwd: Option<&Path>) -> Option<String> {
+    if let Ok(url) = tauri::Url::parse(arg) {
+        if let Ok(path) = url.to_file_path() {
+            return normalize_open_project_path(path, cwd);
+        }
+    }
+    normalize_open_project_path(PathBuf::from(arg), cwd)
+}
+
+pub fn open_project_paths_from_args(args: &[String], cwd: &str) -> Vec<String> {
+    let cwd = Path::new(cwd);
+    args.iter()
+        .filter_map(|arg| open_project_path_from_arg(arg, Some(cwd)))
+        .collect()
+}
+
+pub fn open_project_paths_from_env_args() -> Vec<String> {
+    let cwd = std::env::current_dir().ok();
+    std::env::args()
+        .skip(1)
+        .filter_map(|arg| open_project_path_from_arg(&arg, cwd.as_deref()))
+        .collect()
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+pub fn open_project_paths_from_urls(urls: Vec<tauri::Url>) -> Vec<String> {
+    urls.into_iter()
+        .filter_map(|url| url.to_file_path().ok())
+        .filter_map(|path| normalize_open_project_path(path, None))
+        .collect()
+}
+
+pub fn queue_open_project_paths(app: &tauri::AppHandle, paths: Vec<String>) {
+    if paths.is_empty() {
+        return;
+    }
+    app.state::<PendingOpenProjects>().push(paths);
+    let focused = app
+        .webview_windows()
+        .into_values()
+        .find(|w| w.is_focused().unwrap_or(false));
+    let window = focused.or_else(|| app.webview_windows().into_values().next());
+    if let Some(window) = window {
+        let _ = window.set_focus();
+        let _ = window.emit_to(window.label(), "open-projects-pending", ());
     }
 }
 
@@ -442,6 +522,11 @@ pub fn get_project(
         store.settings().default_project_settings,
         |project| project.view(),
     )
+}
+
+#[tauri::command]
+pub fn take_pending_open_projects(pending: State<'_, PendingOpenProjects>) -> Vec<String> {
+    pending.0.lock().unwrap().drain(..).collect()
 }
 
 #[tauri::command]
@@ -760,4 +845,41 @@ fn generate_bundle_with_title(
         settings.include_line_ranges_in_headings,
     );
     (markdown, problems)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_project_args_keep_only_bmd_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("Demo.BMD");
+        std::fs::write(&project, "{}").unwrap();
+        std::fs::write(dir.path().join("note.txt"), "not a project").unwrap();
+
+        let args = vec![
+            "--flag".to_string(),
+            "note.txt".to_string(),
+            "Demo.BMD".to_string(),
+        ];
+
+        assert_eq!(
+            open_project_paths_from_args(&args, dir.path().to_str().unwrap()),
+            vec![project.canonicalize().unwrap().display().to_string()]
+        );
+    }
+
+    #[test]
+    fn open_project_args_accept_file_urls() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("url.bmd");
+        std::fs::write(&project, "{}").unwrap();
+        let url = tauri::Url::from_file_path(&project).unwrap().to_string();
+
+        assert_eq!(
+            open_project_paths_from_args(&[url], dir.path().to_str().unwrap()),
+            vec![project.canonicalize().unwrap().display().to_string()]
+        );
+    }
 }

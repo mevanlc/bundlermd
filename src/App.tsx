@@ -765,6 +765,7 @@ export default function App() {
   const dragIndex = useRef<number | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
+  const pendingOpenProjectsRef = useRef<() => Promise<void>>(async () => {});
 
   // Latest handlers for the once-registered menu listener.
   const menuHandlersRef = useRef<Record<string, () => void>>({});
@@ -794,7 +795,9 @@ export default function App() {
   dispatchMenuRef.current = dispatchMenu;
 
   useEffect(() => {
-    invoke<ProjectView>("get_project").then(setProject);
+    invoke<ProjectView>("get_project")
+      .then(setProject)
+      .then(() => pendingOpenProjectsRef.current());
     invoke<AppSettings>("get_app_settings").then(setAppSettings);
     // Listen on the window (not globally): the backend targets menu/close
     // events at a specific window's label. The settings broadcast reaches
@@ -806,6 +809,9 @@ export default function App() {
     const unlistenMenu = appWindow.listen<string>("menu", (e) => {
       dispatchMenuRef.current(e.payload);
     });
+    const unlistenOpenProjects = appWindow.listen("open-projects-pending", () => {
+      void pendingOpenProjectsRef.current();
+    });
     const unlistenAppSettings = appWindow.listen<AppSettings>(
       "app-settings-changed",
       (e) => setAppSettings(e.payload),
@@ -813,6 +819,7 @@ export default function App() {
     return () => {
       void unlistenClose.then((fn) => fn());
       void unlistenMenu.then((fn) => fn());
+      void unlistenOpenProjects.then((fn) => fn());
       void unlistenAppSettings.then((fn) => fn());
     };
   }, []);
@@ -1006,6 +1013,17 @@ export default function App() {
   function openRecent(path: string) {
     guardDirty(() => loadProjectFromPath(path));
   }
+
+  async function drainPendingOpenProjects() {
+    try {
+      const paths = await invoke<string[]>("take_pending_open_projects");
+      const path = paths[0];
+      if (path) guardDirty(() => loadProjectFromPath(path));
+    } catch (e) {
+      setStatusMsg(String(e));
+    }
+  }
+  pendingOpenProjectsRef.current = drainPendingOpenProjects;
 
   function newProject() {
     guardDirty(async () => {

@@ -12,16 +12,15 @@ use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         // Must be first: second launches forward here and exit.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.webview_windows().values().next() {
-                let _ = window.set_focus();
-            }
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            state::queue_open_project_paths(app, state::open_project_paths_from_args(&args, &cwd));
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state::Workareas::default())
+        .manage(state::PendingOpenProjects::default())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             app.manage(store::GlobalStore::load(config_dir.join("global.json")));
@@ -29,6 +28,10 @@ pub fn run() {
             menudef::install(app)?;
             let theme = app.state::<store::GlobalStore>().settings().theme;
             store::apply_theme(app.handle(), theme);
+            state::queue_open_project_paths(
+                app.handle(),
+                state::open_project_paths_from_env_args(),
+            );
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -58,6 +61,7 @@ pub fn run() {
             state::new_project,
             state::save_project,
             state::open_project,
+            state::take_pending_open_projects,
             state::export_bundle,
             state::render_bundle_for_clipboard,
             state::host_os,
@@ -66,6 +70,12 @@ pub fn run() {
             store::get_recents,
             store::clear_recents,
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .expect("error while running tauri application");
+    app.run(|app, event| {
+        #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+        if let tauri::RunEvent::Opened { urls } = event {
+            state::queue_open_project_paths(app, state::open_project_paths_from_urls(urls));
+        }
+    });
 }
