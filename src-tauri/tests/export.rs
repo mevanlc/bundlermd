@@ -3,7 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use bundlermd_lib::project::{PathPresentation, ProjectSettings};
+use bundlermd_lib::project::{
+    FileOptions, HeaderStyle, PathPresentation, ProjectEntry, ProjectSettings,
+};
 use bundlermd_lib::state::{generate_bundle, Limits};
 
 fn fixture(name: &str) -> PathBuf {
@@ -12,9 +14,13 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
+fn entries(paths: Vec<PathBuf>) -> Vec<ProjectEntry> {
+    paths.into_iter().map(ProjectEntry::new).collect()
+}
+
 #[test]
 fn export_over_fixture_set() {
-    let files = vec![
+    let files = entries(vec![
         fixture("plain.txt"),
         fixture("crlf.txt"),
         fixture("backticks.md"),
@@ -22,7 +28,7 @@ fn export_over_fixture_set() {
         fixture("binary.bin"),
         fixture("utf16le_nobom.txt"),
         fixture("does_not_exist.txt"),
-    ];
+    ]);
     let (markdown, problems) = generate_bundle(
         &files,
         &ProjectSettings::default(),
@@ -75,11 +81,11 @@ fn export_disambiguates_collisions_with_toc_links() {
         std::fs::write(&p, content).unwrap();
         p
     };
-    let files = vec![
+    let files = entries(vec![
         make("alpha/config.json", "{\"a\":1}\n"),
         make("beta/config.json", "{\"b\":2}\n"),
         make("readme.txt", "hello\n"),
-    ];
+    ]);
     let settings = ProjectSettings {
         toc_links: true,
         path_presentation: PathPresentation::Smart,
@@ -114,7 +120,7 @@ fn export_can_include_line_ranges_in_toc_and_headings() {
         ..Default::default()
     };
     let (markdown, problems) = generate_bundle(
-        &[a, b],
+        &entries(vec![a, b]),
         &settings,
         None,
         Path::new("/tmp/out.md"),
@@ -144,12 +150,12 @@ fn export_enforces_size_limits() {
         std::fs::write(&p, content).unwrap();
         p
     };
-    let files = vec![
+    let files = entries(vec![
         make("a.txt", "0123456789\n"),    // 11 bytes — fits
         make("big.txt", &"x".repeat(50)), // 50 bytes — over per-file limit
         make("b.txt", "0123456789\n"),    // 11 bytes — fits (total 22)
         make("c.txt", "0123456789\n"),    // 11 bytes — would make total 33 > 25
-    ];
+    ]);
     let limits = Limits {
         max_file_bytes: 40,
         max_total_bytes: 25,
@@ -192,7 +198,7 @@ fn export_enforces_size_limits() {
 
 #[test]
 fn export_can_omit_description() {
-    let files = vec![fixture("plain.txt")];
+    let files = entries(vec![fixture("plain.txt")]);
     let settings = ProjectSettings {
         description: "Hidden description".into(),
         include_description_in_export: false,
@@ -213,7 +219,7 @@ fn export_can_omit_description() {
 
 #[test]
 fn export_can_omit_detected_language_tags() {
-    let files = vec![fixture("plain.txt")];
+    let files = entries(vec![fixture("plain.txt")]);
     let settings = ProjectSettings {
         add_detected_language_tag_to_code_fences: false,
         ..Default::default()
@@ -229,4 +235,50 @@ fn export_can_omit_detected_language_tags() {
     assert!(problems.is_empty());
     assert!(markdown.contains("## File 1: plain.txt\n\n```\nplain text file\n```\n"));
     assert!(!markdown.contains("```text\n"));
+}
+
+#[test]
+fn export_applies_per_file_representation_options() {
+    let dir = tempfile::tempdir().unwrap();
+    let a = dir.path().join("a.txt");
+    let b = dir.path().join("b.txt");
+    std::fs::write(&a, "alpha\n").unwrap();
+    std::fs::write(&b, "beta\n").unwrap();
+
+    let files = vec![
+        ProjectEntry {
+            path: a,
+            options: FileOptions {
+                include_code_fence: false,
+                include_in_toc: false,
+                header_style: HeaderStyle::Custom,
+                custom_header: "Intro".into(),
+            },
+        },
+        ProjectEntry {
+            path: b,
+            options: FileOptions {
+                header_style: HeaderStyle::None,
+                ..Default::default()
+            },
+        },
+    ];
+    let settings = ProjectSettings {
+        toc_links: true,
+        ..Default::default()
+    };
+    let (markdown, problems) = generate_bundle(
+        &files,
+        &settings,
+        None,
+        Path::new("/tmp/out.md"),
+        Limits::default(),
+    );
+
+    assert!(problems.is_empty());
+    assert!(markdown.contains("## Table of Contents\n\n- b.txt\n\n## Intro\n\nalpha\n"));
+    assert!(!markdown.contains("- Intro"));
+    assert!(!markdown.contains("```text\nalpha\n```"));
+    assert!(!markdown.contains("## File 2: b.txt"));
+    assert!(markdown.contains("```text\nbeta\n```\n"));
 }

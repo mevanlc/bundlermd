@@ -55,12 +55,46 @@ pub struct BundleFile {
     /// Optional Markdown info string appended to the opening code fence.
     pub fence_tag: Option<String>,
     pub content: String,
+    pub include_code_fence: bool,
+    pub include_in_toc: bool,
+    pub header: BundleHeader,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BundleHeader {
+    Filename,
+    None,
+    Custom(String),
+}
+
+impl BundleFile {
+    fn heading(&self, index: usize) -> Option<String> {
+        match &self.header {
+            BundleHeader::Filename => Some(format!("File {}: {}", index + 1, self.display)),
+            BundleHeader::None => None,
+            BundleHeader::Custom(text) => {
+                let text = text.trim();
+                if text.is_empty() {
+                    Some(format!("File {}: {}", index + 1, self.display))
+                } else {
+                    Some(text.to_string())
+                }
+            }
+        }
+    }
+
+    fn toc_label(&self) -> String {
+        match &self.header {
+            BundleHeader::Custom(text) if !text.trim().is_empty() => text.trim().to_string(),
+            _ => self.display.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct LineRange {
-    heading: usize,
-    closing_fence: usize,
+    start: usize,
+    end: usize,
 }
 
 fn completed_lines_written(s: &str, nl: &str) -> usize {
@@ -90,21 +124,37 @@ fn file_line_ranges(
 
     files
         .iter()
-        .map(|file| {
-            next_line += 1; // blank before file heading
-            let heading = next_line;
-            next_line += 1; // file heading
-            next_line += 1; // blank before opening fence
-            next_line += 1; // opening fence
-            let content = normalize_newlines(&file.content, nl);
-            next_line += completed_lines_written(&content, n);
-            let closing_fence = next_line;
-            next_line += 1; // closing fence
-
-            LineRange {
-                heading,
-                closing_fence,
+        .enumerate()
+        .map(|(i, file)| {
+            next_line += 1; // blank before file section
+            let mut start = next_line;
+            if file.heading(i).is_some() {
+                next_line += 1; // file heading
+                next_line += 1; // blank before content/fence
             }
+
+            let end = if file.include_code_fence {
+                next_line += 1; // opening fence
+                let content = normalize_newlines(&file.content, nl);
+                next_line += completed_lines_written(&content, n);
+                let closing_fence = next_line;
+                next_line += 1; // closing fence
+                closing_fence
+            } else {
+                let content = normalize_newlines(&file.content, nl);
+                let content_lines = completed_lines_written(&content, n);
+                if file.heading(i).is_none() {
+                    start = next_line;
+                }
+                if content_lines == 0 {
+                    start
+                } else {
+                    next_line += content_lines;
+                    next_line - 1
+                }
+            };
+
+            LineRange { start, end }
         })
         .collect()
 }
@@ -128,8 +178,9 @@ pub fn assemble(
         out.push_str(n);
     };
     let description = normalize_newlines(description, nl);
+    let toc_line_count = files.iter().filter(|file| file.include_in_toc).count();
     let line_ranges = if include_line_ranges_in_headings {
-        file_line_ranges(&description, files, nl, files.len())
+        file_line_ranges(&description, files, nl, toc_line_count)
     } else {
         Vec::new()
     };
@@ -138,36 +189,42 @@ pub fn assemble(
     let mut slugger = crate::anchors::Slugger::new();
     slugger.slug(title);
     slugger.slug("Table of Contents");
-    let file_headings: Vec<String> = files
+    let file_headings: Vec<Option<String>> = files
         .iter()
         .enumerate()
         .map(|(i, f)| {
-            let base = format!("File {}: {}", i + 1, f.display);
-            if let Some(range) = line_ranges.get(i) {
-                format!(
-                    "{base} -- (lines {} through {})",
-                    range.heading, range.closing_fence
-                )
-            } else {
-                base
-            }
+            f.heading(i).map(|base| {
+                if let Some(range) = line_ranges.get(i) {
+                    format!("{base} -- (lines {} through {})", range.start, range.end)
+                } else {
+                    base
+                }
+            })
         })
         .collect();
-    let toc_labels: Vec<String> = files
+    let toc_labels: Vec<Option<String>> = files
         .iter()
         .enumerate()
         .map(|(i, file)| {
-            if let Some(range) = line_ranges.get(i) {
-                format!(
-                    "{} -- (lines {} through {})",
-                    file.display, range.heading, range.closing_fence
-                )
+            if file.include_in_toc {
+                let label = file.toc_label();
+                if let Some(range) = line_ranges.get(i) {
+                    Some(format!(
+                        "{label} -- (lines {} through {})",
+                        range.start, range.end
+                    ))
+                } else {
+                    Some(label)
+                }
             } else {
-                file.display.clone()
+                None
             }
         })
         .collect();
-    let file_anchors: Vec<String> = file_headings.iter().map(|h| slugger.slug(h)).collect();
+    let file_anchors: Vec<Option<String>> = file_headings
+        .iter()
+        .map(|h| h.as_ref().map(|h| slugger.slug(h)))
+        .collect();
 
     push_line(&mut out, &format!("# {}", title));
     push_line(&mut out, "");
@@ -181,29 +238,44 @@ pub fn assemble(
     push_line(&mut out, "## Table of Contents");
     push_line(&mut out, "");
     for (label, anchor) in toc_labels.iter().zip(&file_anchors) {
-        if toc_links {
-            push_line(&mut out, &format!("- [{}](#{})", label, anchor));
-        } else {
-            push_line(&mut out, &format!("- {}", label));
+        if let Some(label) = label {
+            if toc_links {
+                if let Some(anchor) = anchor {
+                    push_line(&mut out, &format!("- [{}](#{})", label, anchor));
+                } else {
+                    push_line(&mut out, &format!("- {}", label));
+                }
+            } else {
+                push_line(&mut out, &format!("- {}", label));
+            }
         }
     }
 
     for (file, heading) in files.iter().zip(&file_headings) {
-        let fence = fence_for(&file.content);
         push_line(&mut out, "");
-        push_line(&mut out, &format!("## {}", heading));
-        push_line(&mut out, "");
-        if let Some(tag) = &file.fence_tag {
-            push_line(&mut out, &format!("{fence}{tag}"));
-        } else {
-            push_line(&mut out, &fence);
+        if let Some(heading) = heading {
+            push_line(&mut out, &format!("## {}", heading));
+            push_line(&mut out, "");
         }
         let content = normalize_newlines(&file.content, nl);
-        out.push_str(&content);
-        if !content.is_empty() && !content.ends_with(n) {
-            out.push_str(n);
+        if file.include_code_fence {
+            let fence = fence_for(&file.content);
+            if let Some(tag) = &file.fence_tag {
+                push_line(&mut out, &format!("{fence}{tag}"));
+            } else {
+                push_line(&mut out, &fence);
+            }
+            out.push_str(&content);
+            if !content.is_empty() && !content.ends_with(n) {
+                out.push_str(n);
+            }
+            push_line(&mut out, &fence);
+        } else {
+            out.push_str(&content);
+            if !content.is_empty() && !content.ends_with(n) {
+                out.push_str(n);
+            }
         }
-        push_line(&mut out, &fence);
     }
 
     out
@@ -248,18 +320,21 @@ mod tests {
         assert_eq!(fence_for("end````"), "`````");
     }
 
+    fn file(display: &str, content: &str) -> BundleFile {
+        BundleFile {
+            display: display.into(),
+            fence_tag: None,
+            content: content.into(),
+            include_code_fence: true,
+            include_in_toc: true,
+            header: BundleHeader::Filename,
+        }
+    }
+
     fn files() -> Vec<BundleFile> {
         vec![
-            BundleFile {
-                display: "a.txt".into(),
-                fence_tag: None,
-                content: "alpha\n".into(),
-            },
-            BundleFile {
-                display: "b.md".into(),
-                fence_tag: None,
-                content: "has ``` fence\r\nand crlf".into(),
-            },
+            file("a.txt", "alpha\n"),
+            file("b.md", "has ``` fence\r\nand crlf"),
         ]
     }
 
@@ -309,6 +384,9 @@ and crlf
             display: "main.rs".into(),
             fence_tag: Some("rust".into()),
             content: "fn main() {}\n".into(),
+            include_code_fence: true,
+            include_in_toc: true,
+            header: BundleHeader::Filename,
         }];
         let out = assemble("T", "", &f, Newline::Unix, false, false);
         assert!(out.contains("```rust\nfn main() {}\n```\n"));
@@ -329,11 +407,17 @@ and crlf
                 display: "src/config.json".into(),
                 fence_tag: None,
                 content: "a".into(),
+                include_code_fence: true,
+                include_in_toc: true,
+                header: BundleHeader::Filename,
             },
             BundleFile {
                 display: "lib/config.json".into(),
                 fence_tag: None,
                 content: "b".into(),
+                include_code_fence: true,
+                include_in_toc: true,
+                header: BundleHeader::Filename,
             },
         ];
         let out = assemble("T", "", &f, Newline::Unix, true, false);
@@ -348,6 +432,9 @@ and crlf
             display: "x".into(),
             fence_tag: None,
             content: "no trailing newline".into(),
+            include_code_fence: true,
+            include_in_toc: true,
+            header: BundleHeader::Filename,
         }];
         let out = assemble("T", "", &f, Newline::Unix, false, false);
         assert!(out.contains("no trailing newline\n```\n"));
@@ -368,10 +455,45 @@ and crlf
             display: "x".into(),
             fence_tag: None,
             content: "no trailing newline".into(),
+            include_code_fence: true,
+            include_in_toc: true,
+            header: BundleHeader::Filename,
         }];
         let out = assemble("T", "one\ntwo", &f, Newline::Unix, false, true);
         let lines: Vec<_> = out.lines().collect();
         assert_eq!(lines[9], "## File 1: x -- (lines 10 through 14)");
         assert_eq!(lines[13], "```");
+    }
+
+    #[test]
+    fn assemble_can_omit_code_fence() {
+        let mut f = file("plain.txt", "plain text\n");
+        f.include_code_fence = false;
+        let out = assemble("T", "", &[f], Newline::Unix, false, false);
+        assert!(out.contains("## File 1: plain.txt\n\nplain text\n"));
+        assert!(!out.contains("```\nplain text\n```"));
+    }
+
+    #[test]
+    fn assemble_can_omit_toc_entry() {
+        let mut f = files();
+        f[1].include_in_toc = false;
+        let out = assemble("T", "", &f, Newline::Unix, false, false);
+        assert!(out.contains("## Table of Contents\n\n- a.txt\n\n## File 1: a.txt"));
+        assert!(!out.contains("- b.md\n"));
+        assert!(out.contains("## File 2: b.md\n"));
+    }
+
+    #[test]
+    fn assemble_supports_custom_and_missing_headers() {
+        let mut f = vec![file("a.txt", "alpha\n"), file("b.txt", "beta\n")];
+        f[0].header = BundleHeader::Custom("Overview".into());
+        f[1].header = BundleHeader::None;
+        let out = assemble("T", "", &f, Newline::Unix, true, false);
+        assert!(out.contains("- [Overview](#overview)\n"));
+        assert!(out.contains("- b.txt\n"));
+        assert!(out.contains("## Overview\n\n```\nalpha\n```\n"));
+        assert!(out.contains("```\nbeta\n```\n"));
+        assert!(!out.contains("## File 2: b.txt"));
     }
 }

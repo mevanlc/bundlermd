@@ -1,6 +1,6 @@
 import hljs from "highlight.js/lib/common";
 import MarkdownIt from "markdown-it";
-import "highlight.js/styles/github.css";
+import "highlight.js/styles/vs2015.css";
 
 const HIGHLIGHT_LANGUAGE_ALIASES = new Map([
   ["c++", "cpp"],

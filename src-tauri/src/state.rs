@@ -2,7 +2,7 @@
 //! frontend drives it with. Mutating commands return the full ProjectView so
 //! the frontend re-renders from scratch.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -10,10 +10,10 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
 
-use crate::bundle::{self, BundleFile};
+use crate::bundle::{self, BundleFile, BundleHeader};
 use crate::project::{
-    effective_title, project_dir, resolve_stored, stored_path, PathPresentation, ProjectFile,
-    ProjectSettings,
+    effective_title, project_dir, resolve_stored, stored_path, FileOptions, HeaderStyle,
+    PathPresentation, ProjectEntry, ProjectFile, ProjectFileEntry, ProjectSettings,
 };
 use crate::reading::{self, FileContent};
 use crate::smartpath::presented_paths;
@@ -37,7 +37,7 @@ impl Default for Limits {
 }
 
 struct Project {
-    files: Vec<PathBuf>,
+    files: Vec<ProjectEntry>,
     settings: ProjectSettings,
     last_export: Option<PathBuf>,
     project_path: Option<PathBuf>,
@@ -105,6 +105,7 @@ pub struct FileRow {
     pub folder: String,
     /// `None` when the file is currently missing/unreadable.
     pub size: Option<u64>,
+    pub options: FileOptions,
 }
 
 /// Everything the frontend needs to render the workarea.
@@ -142,6 +143,31 @@ pub enum MoveOp {
     Down,
     Top,
     Bottom,
+}
+
+#[derive(Default, Deserialize)]
+pub struct FileOptionsPatch {
+    include_code_fence: Option<bool>,
+    include_in_toc: Option<bool>,
+    header_style: Option<HeaderStyle>,
+    custom_header: Option<String>,
+}
+
+impl FileOptionsPatch {
+    fn apply_to(&self, options: &mut FileOptions) {
+        if let Some(value) = self.include_code_fence {
+            options.include_code_fence = value;
+        }
+        if let Some(value) = self.include_in_toc {
+            options.include_in_toc = value;
+        }
+        if let Some(value) = self.header_style {
+            options.header_style = value;
+        }
+        if let Some(value) = &self.custom_header {
+            options.custom_header = value.clone();
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -289,14 +315,16 @@ impl Project {
             files: self
                 .files
                 .iter()
-                .map(|p| FileRow {
-                    path: p.display().to_string(),
-                    name: basename(p),
-                    folder: p
+                .map(|entry| FileRow {
+                    path: entry.path.display().to_string(),
+                    name: basename(&entry.path),
+                    folder: entry
+                        .path
                         .parent()
                         .map(|d| d.display().to_string())
                         .unwrap_or_default(),
-                    size: std::fs::metadata(p).ok().map(|m| m.len()),
+                    size: std::fs::metadata(&entry.path).ok().map(|m| m.len()),
+                    options: entry.options.clone(),
                 })
                 .collect(),
             settings: self.settings.clone(),
@@ -312,11 +340,11 @@ impl Project {
         let mut total: u64 = self
             .files
             .iter()
-            .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+            .filter_map(|entry| std::fs::metadata(&entry.path).ok().map(|m| m.len()))
             .sum();
         let mut added_any = false;
         for path in paths {
-            if self.files.contains(&path) {
+            if self.files.iter().any(|entry| entry.path == path) {
                 continue;
             }
             if let Some(reason) = screen_import(&path, &mut total, limits) {
@@ -325,7 +353,7 @@ impl Project {
                     reason,
                 });
             } else {
-                self.files.push(path);
+                self.files.push(ProjectEntry::new(path));
                 added_any = true;
             }
         }
@@ -412,12 +440,12 @@ pub fn preview_folder(
             let mut total: u64 = project
                 .files
                 .iter()
-                .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+                .filter_map(|entry| std::fs::metadata(&entry.path).ok().map(|m| m.len()))
                 .sum();
             files
                 .iter()
                 .map(|path| {
-                    let note = if project.files.contains(path) {
+                    let note = if project.files.iter().any(|entry| entry.path == *path) {
                         "Already Added".into()
                     } else {
                         screen_import(path, &mut total, limits).unwrap_or_default()
@@ -441,8 +469,49 @@ pub fn remove_file(
 ) -> ProjectView {
     state.with(window.label(), |project| {
         let before = project.files.len();
-        project.files.retain(|p| *p != Path::new(&path));
+        project.files.retain(|entry| entry.path != Path::new(&path));
         if project.files.len() != before {
+            project.dirty = true;
+        }
+        project.view()
+    })
+}
+
+#[tauri::command]
+pub fn remove_files(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    paths: Vec<String>,
+) -> ProjectView {
+    state.with(window.label(), |project| {
+        let remove: HashSet<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let before = project.files.len();
+        project.files.retain(|entry| !remove.contains(&entry.path));
+        if project.files.len() != before {
+            project.dirty = true;
+        }
+        project.view()
+    })
+}
+
+#[tauri::command]
+pub fn update_file_options(
+    window: tauri::Window,
+    state: State<'_, Workareas>,
+    paths: Vec<String>,
+    patch: FileOptionsPatch,
+) -> ProjectView {
+    state.with(window.label(), |project| {
+        let selected: HashSet<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+        let mut changed = false;
+        for entry in &mut project.files {
+            if selected.contains(&entry.path) {
+                let before = entry.options.clone();
+                patch.apply_to(&mut entry.options);
+                changed |= before != entry.options;
+            }
+        }
+        if changed {
             project.dirty = true;
         }
         project.view()
@@ -457,7 +526,11 @@ pub fn move_file(
     op: MoveOp,
 ) -> ProjectView {
     state.with(window.label(), |project| {
-        if let Some(i) = project.files.iter().position(|p| *p == Path::new(&path)) {
+        if let Some(i) = project
+            .files
+            .iter()
+            .position(|entry| entry.path == Path::new(&path))
+        {
             let last = project.files.len() - 1;
             let moved = match op {
                 MoveOp::Up if i > 0 => {
@@ -496,15 +569,29 @@ pub fn set_order(
 ) -> Result<ProjectView, String> {
     state.with(window.label(), |project| {
         let new: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
-        let mut sorted_old = project.files.clone();
+        let mut sorted_old: Vec<PathBuf> = project
+            .files
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect();
         let mut sorted_new = new.clone();
         sorted_old.sort();
         sorted_new.sort();
         if sorted_old != sorted_new {
             return Err("reorder does not match current file set".into());
         }
-        if project.files != new {
-            project.files = new;
+        let changed = project.files.iter().map(|entry| &entry.path).ne(new.iter());
+        if changed {
+            let old: HashMap<PathBuf, ProjectEntry> = project
+                .files
+                .drain(..)
+                .map(|entry| (entry.path.clone(), entry))
+                .collect();
+            let reordered: Vec<ProjectEntry> = new
+                .into_iter()
+                .filter_map(|path| old.get(&path).cloned())
+                .collect();
+            project.files = reordered;
             project.dirty = true;
         }
         Ok(project.view())
@@ -604,9 +691,15 @@ pub fn save_project(
         let stored_files = project
             .files
             .iter()
-            .map(|p| match dir {
-                Some(d) if smart => stored_path(p, d),
-                _ => p.display().to_string(),
+            .map(|entry| {
+                let path = match dir {
+                    Some(d) if smart => stored_path(&entry.path, d),
+                    _ => entry.path.display().to_string(),
+                };
+                ProjectFileEntry {
+                    path,
+                    options: entry.options.clone(),
+                }
             })
             .collect();
         let file = ProjectFile::new(
@@ -664,9 +757,12 @@ pub fn open_project(
             files: pf
                 .files
                 .iter()
-                .map(|s| match dir.as_deref() {
-                    Some(d) => resolve_stored(s, d),
-                    None => PathBuf::from(s),
+                .map(|entry| ProjectEntry {
+                    path: match dir.as_deref() {
+                        Some(d) => resolve_stored(&entry.path, d),
+                        None => PathBuf::from(&entry.path),
+                    },
+                    options: entry.options.clone(),
                 })
                 .collect(),
             settings: pf.settings,
@@ -760,7 +856,7 @@ pub fn render_bundle_for_clipboard(
 /// Every check is re-done here regardless of what add-time screening saw —
 /// files can be deleted, grow, lose permissions, or turn binary in between.
 pub fn generate_bundle(
-    files: &[PathBuf],
+    files: &[ProjectEntry],
     settings: &ProjectSettings,
     project_path: Option<&Path>,
     output: &Path,
@@ -771,19 +867,21 @@ pub fn generate_bundle(
 }
 
 fn generate_bundle_with_title(
-    files: &[PathBuf],
+    files: &[ProjectEntry],
     settings: &ProjectSettings,
     project_path: Option<&Path>,
     title: &str,
     limits: Limits,
 ) -> (String, Vec<Problem>) {
     let dir = project_dir(project_path);
-    let displays = presented_paths(files, &settings.path_presentation, dir.as_deref());
+    let paths: Vec<PathBuf> = files.iter().map(|entry| entry.path.clone()).collect();
+    let displays = presented_paths(&paths, &settings.path_presentation, dir.as_deref());
 
     let mut bundle_files = Vec::new();
     let mut problems = Vec::new();
     let mut total: u64 = 0;
-    for (path, display) in files.iter().zip(displays) {
+    for (entry, display) in files.iter().zip(displays) {
+        let path = &entry.path;
         // Size gate first so an oversized file is never read into memory.
         let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
         if size > limits.max_file_bytes {
@@ -810,14 +908,17 @@ fn generate_bundle_with_title(
             Ok(FileContent::Text(content)) => {
                 // Only included files count toward the total.
                 total += size;
-                let fence_tag = settings
-                    .add_detected_language_tag_to_code_fences
+                let fence_tag = (entry.options.include_code_fence
+                    && settings.add_detected_language_tag_to_code_fences)
                     .then(|| crate::lang::fence_tag(path, &content))
                     .flatten();
                 bundle_files.push(BundleFile {
                     display,
                     fence_tag,
                     content,
+                    include_code_fence: entry.options.include_code_fence,
+                    include_in_toc: entry.options.include_in_toc,
+                    header: bundle_header(&entry.options),
                 });
             }
             Ok(FileContent::Binary) => problems.push(Problem {
@@ -845,6 +946,14 @@ fn generate_bundle_with_title(
         settings.include_line_ranges_in_headings,
     );
     (markdown, problems)
+}
+
+fn bundle_header(options: &FileOptions) -> BundleHeader {
+    match options.header_style {
+        HeaderStyle::Filename => BundleHeader::Filename,
+        HeaderStyle::None => BundleHeader::None,
+        HeaderStyle::Custom => BundleHeader::Custom(options.custom_header.clone()),
+    }
 }
 
 #[cfg(test)]

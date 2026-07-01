@@ -13,8 +13,8 @@
     },
     "files": {
       "type": "array",
-      "description": "Paths of the files in the bundle, in workarea order. Files under the project file's directory are stored relative to it (forward-slashed); files elsewhere are absolute.",
-      "items": { "type": "string" }
+      "description": "Files in the bundle, in workarea order. Paths under the project file's directory are stored relative to it (forward-slashed); files elsewhere are absolute.",
+      "items": { "$ref": "#/$defs/ProjectFileEntry" }
     },
     "last_export": {
       "description": "Absolute path of the last exported bundle file, or null.",
@@ -25,6 +25,47 @@
     }
   },
   "$defs": {
+    "ProjectFileEntry": {
+      "type": "object",
+      "required": ["path", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path of the file in the bundle."
+        },
+        "options": {
+          "$ref": "#/$defs/FileOptions"
+        }
+      }
+    },
+    "FileOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include_code_fence": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether file content is wrapped in a disambiguated Markdown code fence."
+        },
+        "include_in_toc": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the file appears in the bundle Table of Contents."
+        },
+        "header_style": {
+          "type": "string",
+          "enum": ["filename", "none", "custom"],
+          "default": "filename",
+          "description": "How the file section heading is rendered."
+        },
+        "custom_header": {
+          "type": "string",
+          "default": "",
+          "description": "Custom file section heading text when header_style is custom."
+        }
+      }
+    },
     "ProjectSettings": {
       "type": "object",
       "additionalProperties": false,

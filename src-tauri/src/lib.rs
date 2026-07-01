@@ -54,6 +54,8 @@ pub fn run() {
             state::preview_folder,
             state::new_window,
             state::remove_file,
+            state::remove_files,
+            state::update_file_options,
             state::move_file,
             state::set_order,
             state::get_project,

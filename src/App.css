@@ -158,31 +158,70 @@ button:disabled {
   line-height: 1;
 }
 
-.preview-btn {
+.panel-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 2.2rem;
   height: 2.2rem;
   padding: 0;
-  background: #4f6f8f;
-  border-color: #405d7b;
 }
 
-.preview-btn:hover:not(:disabled) {
-  background: #456583;
+.panel-toggle.active {
+  background: #e8f0fa;
+  border-color: #9eb9d6;
+}
+
+.side-panel-icon {
+  position: relative;
+  width: 1.15rem;
+  height: 0.9rem;
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.side-panel-icon::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 34%;
+  border-left: 2px solid currentColor;
+  background: currentColor;
+  opacity: 0.18;
+}
+
+.preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  margin-left: auto;
+  padding: 0;
+}
+
+.preview-btn.active {
+  background: #385d81;
+  border-color: #6f91b0;
 }
 
 .preview-btn img {
   width: 1.2rem;
   height: 1.2rem;
   pointer-events: none;
+  filter: brightness(0) saturate(100%) opacity(0.74);
+}
+
+.preview-btn.active img {
+  filter: none;
 }
 
 .export-split {
   position: relative;
   display: inline-flex;
-  margin-left: auto;
 }
 
 .export-btn {
@@ -326,8 +365,8 @@ button:disabled {
   overflow: auto;
   margin: 0.85rem 0 1.15rem;
   padding: 0.85rem 1rem;
-  background: #f6f8fa;
-  border: 1px solid #d8dee4;
+  background: #1e1e1e;
+  border: 1px solid #333;
   border-radius: 6px;
 }
 
@@ -380,19 +419,28 @@ button:disabled {
   font-size: 1.1rem;
 }
 
+.workarea {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
 .file-table-wrap {
   flex: 1;
-  overflow-y: auto;
+  min-width: 0;
+  overflow: auto;
 }
 
 /* Weighted column layout:
+   - Select is fixed and narrow.
    - Name never shrinks (min = max-content) and absorbs all slack (1fr).
    - Folder takes its natural width when there's room, and is the first
-     column sacrificed under pressure (shrinks down to 6rem, ellipsized).
+   column sacrificed under pressure (shrinks down to 6rem, ellipsized).
    - Size always gets its natural width (it's tiny). */
 .file-table {
   display: grid;
   grid-template-columns:
+    2.1rem
     minmax(max-content, 1fr)
     minmax(6rem, max-content)
     max-content;
@@ -431,8 +479,97 @@ button:disabled {
   background: #e8eef7;
 }
 
+.ft-row.selected {
+  background: #dbeafe;
+}
+
+.ft-row.selected:hover {
+  background: #d3e6fb;
+}
+
 .ft-row.drop-target > div {
   border-top: 2px solid #4a90d9;
+}
+
+.col-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 0.35rem !important;
+  padding-right: 0.25rem !important;
+}
+
+.mixed-checkbox {
+  display: inline-flex;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.mixed-checkbox:not([data-disabled]) {
+  cursor: pointer;
+}
+
+.mixed-checkbox-box {
+  box-sizing: border-box;
+  display: grid;
+  place-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid #9ca3af;
+  border-radius: 4px;
+  background: #e5e7eb;
+  color: #fff;
+}
+
+.mixed-checkbox-box[data-checked],
+.mixed-checkbox-box[data-indeterminate] {
+  border-color: #405d7b;
+  background: #4f6f8f;
+}
+
+.mixed-checkbox[data-disabled] .mixed-checkbox-box {
+  opacity: 0.55;
+}
+
+.mixed-checkbox-indicator {
+  display: none;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.mixed-checkbox-indicator::before {
+  content: "";
+  display: block;
+  background: currentColor;
+}
+
+.mixed-checkbox-indicator-check[data-checked],
+.mixed-checkbox-indicator-indeterminate[data-indeterminate] {
+  display: grid;
+}
+
+.mixed-checkbox-indicator-check::before {
+  width: 0.5rem;
+  height: 0.5rem;
+  clip-path: polygon(14% 44%, 0 65%, 42% 100%, 100% 18%, 80% 0, 39% 61%);
+}
+
+.mixed-checkbox-indicator-indeterminate::before {
+  width: 0.56rem;
+  height: 0.12rem;
+  border-radius: 999px;
+}
+
+.mixed-checkbox .p-checkbox-input:focus-visible + .mixed-checkbox-box {
+  outline: 2px solid #4a90d9;
+  outline-offset: 2px;
 }
 
 .col-name {
@@ -464,6 +601,46 @@ button:disabled {
   color: #666;
   font-weight: 600;
   font-size: 0.85rem;
+}
+
+.properties-panel {
+  flex: 0 0 18rem;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 0.75rem 0.9rem;
+  border-left: 1px solid #ddd;
+  background: #fafafa;
+}
+
+.properties-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.properties-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.properties-head span,
+.properties-empty {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.mixed-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.3rem 0;
+}
+
+.remove-selected-btn {
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .status {
@@ -782,6 +959,11 @@ fieldset.field {
     background: #3c4654;
   }
 
+  .panel-toggle.active {
+    background: #33445c;
+    border-color: #577a9b;
+  }
+
   .ft-header {
     background: #1f1f1f;
   }
@@ -799,9 +981,42 @@ fieldset.field {
     background: #2e3947;
   }
 
+  .ft-row.selected {
+    background: #33445c;
+  }
+
+  .ft-row.selected:hover {
+    background: #3a4d68;
+  }
+
+  .mixed-checkbox {
+    color: #fff;
+  }
+
+  .mixed-checkbox-box {
+    background: #2c2c2e;
+    border-color: #6a6a70;
+  }
+
+  .mixed-checkbox-box[data-checked],
+  .mixed-checkbox-box[data-indeterminate] {
+    background: #6f91b0;
+    border-color: #8fb1d1;
+  }
+
   .col-size,
   .col-folder {
     color: #9a9aa0;
+  }
+
+  .properties-panel {
+    background: #252525;
+    border-color: #3a3a3a;
+  }
+
+  .properties-head span,
+  .properties-empty {
+    color: #aaa;
   }
 
   .context-menu,
@@ -866,13 +1081,13 @@ fieldset.field {
     background: #33445c;
   }
 
-  .preview-btn {
-    background: #456583;
-    border-color: #577a9b;
+  .preview-btn img {
+    filter: none;
   }
 
-  .preview-btn:hover:not(:disabled) {
-    background: #517292;
+  .preview-btn.active {
+    background: #33445c;
+    border-color: #79a5ce;
   }
 
   .bundle-preview-wrap {
@@ -911,63 +1126,12 @@ fieldset.field {
   }
 
   .bundle-preview pre {
-    background: #161b22;
-    border-color: #30363d;
+    background: #1e1e1e;
+    border-color: #333;
   }
 
   .bundle-preview blockquote {
     color: #aaa;
-  }
-
-  .bundle-preview .hljs {
-    color: #c9d1d9;
-  }
-
-  .bundle-preview .hljs-keyword,
-  .bundle-preview .hljs-doctag,
-  .bundle-preview .hljs-meta .hljs-keyword,
-  .bundle-preview .hljs-template-tag,
-  .bundle-preview .hljs-template-variable,
-  .bundle-preview .hljs-type,
-  .bundle-preview .hljs-variable.language_ {
-    color: #ff7b72;
-  }
-
-  .bundle-preview .hljs-title,
-  .bundle-preview .hljs-title.class_,
-  .bundle-preview .hljs-title.class_.inherited__,
-  .bundle-preview .hljs-title.function_ {
-    color: #d2a8ff;
-  }
-
-  .bundle-preview .hljs-attr,
-  .bundle-preview .hljs-attribute,
-  .bundle-preview .hljs-literal,
-  .bundle-preview .hljs-meta,
-  .bundle-preview .hljs-number,
-  .bundle-preview .hljs-operator,
-  .bundle-preview .hljs-variable,
-  .bundle-preview .hljs-selector-attr,
-  .bundle-preview .hljs-selector-class,
-  .bundle-preview .hljs-selector-id {
-    color: #79c0ff;
-  }
-
-  .bundle-preview .hljs-regexp,
-  .bundle-preview .hljs-string,
-  .bundle-preview .hljs-meta .hljs-string {
-    color: #a5d6ff;
-  }
-
-  .bundle-preview .hljs-built_in,
-  .bundle-preview .hljs-symbol {
-    color: #ffa657;
-  }
-
-  .bundle-preview .hljs-comment,
-  .bundle-preview .hljs-code,
-  .bundle-preview .hljs-formula {
-    color: #8b949e;
   }
 
   .preview-count,

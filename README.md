@@ -6,6 +6,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 
 - **Add files** via dialog or folder import (shallow or recursive), with a preview before committing
 - **Reorder** by drag-and-drop or right-click context menu
+- **Multi-select file properties**: bulk-edit code fencing, TOC inclusion, and file heading style
 - **Project files** (`.bmd`) save and restore the file list, settings, and last export path
 - **Smart Relative paths** in the bundle: files under the project folder are shown relative to it; others get the shortest unambiguous name
 - **Size limits**: configurable per-file and total caps; oversized files are reported and skipped, not silently dropped
@@ -42,6 +43,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 ````
 
 - File content is wrapped in code fences sized to never conflict with content (min 3 backticks; one more than the longest run in the file)
+- Per-file options can omit the outer code fence, omit the file from the Table of Contents, or use a filename, no heading, or custom heading for that file section
 - Opening code fences can include GitHub Linguist-style language tags when BundlerMD can infer one from the filename, extension, or content
 - Newlines are normalized to Unix, Windows, or platform-default — your choice per project
 - Table of Contents entries optionally link to their sections via GitHub-style anchors
@@ -84,7 +86,26 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/mevanlc/bundlermd/refs/heads/main/schemas/project-v1.json",
-  "files": ["src/file1.rs", "lib/helper.py", "/outside/project/shared.rs"],
+  "files": [
+    {
+      "path": "src/file1.rs",
+      "options": {
+        "include_code_fence": true,
+        "include_in_toc": true,
+        "header_style": "filename",
+        "custom_header": ""
+      }
+    },
+    {
+      "path": "lib/helper.py",
+      "options": {
+        "include_code_fence": false,
+        "include_in_toc": true,
+        "header_style": "custom",
+        "custom_header": "Helper module"
+      }
+    }
+  ],
   "last_export": "/abs/path/bundle.md",
   "settings": {
     "add_detected_language_tag_to_code_fences": true,
@@ -98,7 +119,7 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
 }
 ```
 
-`path_presentation.mode` is `"smart"` (files under the project directory stored/shown relative to it, others absolute) or `"absolute"` (always full paths).
+`path_presentation.mode` is `"smart"` (file `path` values under the project directory are stored/shown relative to it, others absolute) or `"absolute"` (always full paths).
 
 ## License
 

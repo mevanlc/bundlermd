@@ -47,6 +47,56 @@ pub enum PathPresentation {
     Absolute,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum HeaderStyle {
+    #[default]
+    Filename,
+    None,
+    Custom,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(default)]
+pub struct FileOptions {
+    pub include_code_fence: bool,
+    pub include_in_toc: bool,
+    pub header_style: HeaderStyle,
+    pub custom_header: String,
+}
+
+impl Default for FileOptions {
+    fn default() -> Self {
+        Self {
+            include_code_fence: true,
+            include_in_toc: true,
+            header_style: HeaderStyle::Filename,
+            custom_header: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectEntry {
+    pub path: PathBuf,
+    pub options: FileOptions,
+}
+
+impl ProjectEntry {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            options: FileOptions::default(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub struct ProjectFileEntry {
+    pub path: String,
+    pub options: FileOptions,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(default)]
 pub struct ProjectSettings {
@@ -79,14 +129,18 @@ impl Default for ProjectSettings {
 pub struct ProjectFile {
     #[serde(rename = "$schema", default)]
     schema: String,
-    pub files: Vec<String>,
+    pub files: Vec<ProjectFileEntry>,
     pub last_export: Option<String>,
     #[serde(default)]
     pub settings: ProjectSettings,
 }
 
 impl ProjectFile {
-    pub fn new(files: Vec<String>, last_export: Option<String>, settings: ProjectSettings) -> Self {
+    pub fn new(
+        files: Vec<ProjectFileEntry>,
+        last_export: Option<String>,
+        settings: ProjectSettings,
+    ) -> Self {
         Self {
             schema: SCHEMA_URL.into(),
             files,
@@ -163,7 +217,21 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.bmd");
         let original = ProjectFile::new(
-            vec!["/a/b.txt".into(), "/c/d.txt".into()],
+            vec![
+                ProjectFileEntry {
+                    path: "/a/b.txt".into(),
+                    options: FileOptions::default(),
+                },
+                ProjectFileEntry {
+                    path: "/c/d.txt".into(),
+                    options: FileOptions {
+                        include_code_fence: false,
+                        include_in_toc: false,
+                        header_style: HeaderStyle::Custom,
+                        custom_header: "Custom heading".into(),
+                    },
+                },
+            ],
             Some("/out.md".into()),
             ProjectSettings {
                 add_detected_language_tag_to_code_fences: false,
@@ -200,11 +268,18 @@ mod tests {
         let path = dir.path().join("min.bmd");
         std::fs::write(
             &path,
-            format!(r#"{{"$schema": "{SCHEMA_URL}", "files": ["/x.txt"], "last_export": null}}"#),
+            format!(
+                r#"{{
+                    "$schema": "{SCHEMA_URL}",
+                    "files": [{{ "path": "/x.txt", "options": {{}} }}],
+                    "last_export": null
+                }}"#
+            ),
         )
         .unwrap();
         let loaded = ProjectFile::load(&path).unwrap();
         assert_eq!(loaded.settings, ProjectSettings::default());
+        assert_eq!(loaded.files[0].options, FileOptions::default());
     }
 
     #[test]
@@ -216,7 +291,7 @@ mod tests {
             format!(
                 r#"{{
                     "$schema": "{SCHEMA_URL}",
-                    "files": ["/x.txt"],
+                    "files": [{{ "path": "/x.txt", "options": {{}} }}],
                     "last_export": null,
                     "settings": {{
                         "description": "Old project",

@@ -13,6 +13,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
+import { Checkbox as PrimeCheckbox } from "@primereact/ui/checkbox";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -26,9 +27,18 @@ interface FileRow {
   name: string;
   folder: string;
   size: number | null;
+  options: FileOptions;
 }
 
 type PathPresentation = { mode: "smart" } | { mode: "absolute" };
+type HeaderStyle = "filename" | "none" | "custom";
+
+interface FileOptions {
+  include_code_fence: boolean;
+  include_in_toc: boolean;
+  header_style: HeaderStyle;
+  custom_header: string;
+}
 
 interface ProjectSettings {
   add_detected_language_tag_to_code_fences: boolean;
@@ -388,6 +398,165 @@ function InfoTip({ lines }: { lines: string[] }) {
   );
 }
 
+type MixedCheckboxValue = boolean | "mixed";
+
+function mixedValue<T>(
+  files: FileRow[],
+  getValue: (file: FileRow) => T,
+): T | "mixed" | null {
+  if (files.length === 0) return null;
+  const first = getValue(files[0]);
+  return files.every((file) => getValue(file) === first) ? first : "mixed";
+}
+
+function mixedTextValue(
+  files: FileRow[],
+  getValue: (file: FileRow) => string,
+): { mixed: boolean; value: string } {
+  if (files.length === 0) return { mixed: false, value: "" };
+  const first = getValue(files[0]);
+  return files.every((file) => getValue(file) === first)
+    ? { mixed: false, value: first }
+    : { mixed: true, value: "" };
+}
+
+function MixedCheckbox({
+  value,
+  onChange,
+  ariaLabel,
+  disabled = false,
+}: {
+  value: MixedCheckboxValue;
+  onChange: (checked: boolean) => void;
+  ariaLabel: string;
+  disabled?: boolean;
+}) {
+  return (
+    <PrimeCheckbox.Root
+      className="mixed-checkbox"
+      checked={value === true}
+      indeterminate={value === "mixed"}
+      disabled={disabled}
+      ariaLabel={ariaLabel}
+      onCheckedChange={(event: { checked: boolean }) =>
+        onChange(Boolean(event.checked))
+      }
+    >
+      <PrimeCheckbox.Box className="mixed-checkbox-box">
+        <PrimeCheckbox.Indicator className="mixed-checkbox-indicator mixed-checkbox-indicator-check" />
+        <PrimeCheckbox.Indicator className="mixed-checkbox-indicator mixed-checkbox-indicator-indeterminate" />
+      </PrimeCheckbox.Box>
+    </PrimeCheckbox.Root>
+  );
+}
+
+function FilePropertiesPanel({
+  selectedFiles,
+  onPatch,
+  onRemoveSelected,
+}: {
+  selectedFiles: FileRow[];
+  onPatch: (patch: Partial<FileOptions>) => void;
+  onRemoveSelected: () => void;
+}) {
+  const codeFence = mixedValue(
+    selectedFiles,
+    (file) => file.options.include_code_fence,
+  );
+  const includeInToc = mixedValue(
+    selectedFiles,
+    (file) => file.options.include_in_toc,
+  );
+  const headerStyle = mixedValue(
+    selectedFiles,
+    (file) => file.options.header_style,
+  );
+  const customHeader = mixedTextValue(
+    selectedFiles,
+    (file) => file.options.custom_header,
+  );
+  const selectedCount = selectedFiles.length;
+  const customEnabled = headerStyle === "custom";
+
+  return (
+    <aside className="properties-panel">
+      <div className="properties-head">
+        <h2>File Properties</h2>
+        <span>
+          {selectedCount > 0 ? `${selectedCount} selected` : "No selection"}
+        </span>
+      </div>
+
+      {selectedCount === 0 ? (
+        <p className="properties-empty">No selection</p>
+      ) : (
+        <>
+          <label className="mixed-radio">
+            <MixedCheckbox
+              value={codeFence === "mixed" ? "mixed" : codeFence === true}
+              ariaLabel="Use code fence"
+              onChange={(checked) => onPatch({ include_code_fence: checked })}
+            />
+            Use code fence
+          </label>
+
+          <label className="mixed-radio">
+            <MixedCheckbox
+              value={includeInToc === "mixed" ? "mixed" : includeInToc === true}
+              ariaLabel="Add to Table of Contents"
+              onChange={(checked) => onPatch({ include_in_toc: checked })}
+            />
+            Add to Table of Contents
+          </label>
+
+          <label className="field">
+            <span>Header Style</span>
+            <select
+              value={headerStyle === "mixed" || headerStyle === null ? "" : headerStyle}
+              onChange={(e) =>
+                onPatch({ header_style: e.currentTarget.value as HeaderStyle })
+              }
+            >
+              {(headerStyle === "mixed" || headerStyle === null) && (
+                <option value="" disabled>
+                  Mixed
+                </option>
+              )}
+              <option value="filename">Filename</option>
+              <option value="none">None</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Custom</span>
+            <input
+              type="text"
+              value={customHeader.value}
+              placeholder={customHeader.mixed ? "Mixed values" : ""}
+              disabled={!customEnabled}
+              onChange={(e) =>
+                onPatch({
+                  header_style: "custom",
+                  custom_header: e.currentTarget.value,
+                })
+              }
+            />
+          </label>
+
+          <button
+            className="remove-selected-btn"
+            type="button"
+            onClick={onRemoveSelected}
+          >
+            Remove Selected
+          </button>
+        </>
+      )}
+    </aside>
+  );
+}
+
 function ProjectSettingsEditor({
   draft,
   setDraft,
@@ -742,6 +911,8 @@ export default function App() {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [propertiesOpen, setPropertiesOpen] = useState(true);
   const [settingsDraft, setSettingsDraft] = useState<ProjectSettings | null>(
     null,
   );
@@ -763,6 +934,8 @@ export default function App() {
   // already lives in the menu bar); other platforms keep the app-name suffix.
   const [isMacOS, setIsMacOS] = useState(false);
   const dragIndex = useRef<number | null>(null);
+  const dragPaths = useRef<string[]>([]);
+  const lastSelectedPath = useRef<string | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
   const pendingOpenProjectsRef = useRef<() => Promise<void>>(async () => {});
@@ -836,8 +1009,27 @@ export default function App() {
   }, [project.project_path, project.dirty, isMacOS]);
 
   useEffect(() => {
-    setPreviewHtml(null);
+    if (previewHtml === null) return;
+    if (project.files.length === 0) {
+      setPreviewHtml(null);
+      return;
+    }
+    void runPreview(true);
   }, [project.files, project.settings, project.project_path]);
+
+  useEffect(() => {
+    const currentPaths = new Set(project.files.map((file) => file.path));
+    setSelectedPaths((paths) => {
+      const next = paths.filter((path) => currentPaths.has(path));
+      return next.length === paths.length ? paths : next;
+    });
+    if (
+      lastSelectedPath.current &&
+      !currentPaths.has(lastSelectedPath.current)
+    ) {
+      lastSelectedPath.current = null;
+    }
+  }, [project.files]);
 
   // Missing-file detection: re-poll the backend (which stats every file)
   // about once a second; only re-render when something actually changed.
@@ -953,8 +1145,66 @@ export default function App() {
     });
   }
 
+  function selectFileRow(
+    path: string,
+    event: React.MouseEvent<HTMLElement>,
+  ) {
+    const orderedPaths = project.files.map((file) => file.path);
+    const anchor = lastSelectedPath.current;
+    if (event.shiftKey && anchor && orderedPaths.includes(anchor)) {
+      const from = orderedPaths.indexOf(anchor);
+      const to = orderedPaths.indexOf(path);
+      const [start, end] = from < to ? [from, to] : [to, from];
+      const range = orderedPaths.slice(start, end + 1);
+      if (event.metaKey || event.ctrlKey) {
+        setSelectedPaths((paths) => Array.from(new Set([...paths, ...range])));
+      } else {
+        setSelectedPaths(range);
+      }
+    } else if (event.metaKey || event.ctrlKey) {
+      setSelectedPaths((paths) =>
+        paths.includes(path)
+          ? paths.filter((selected) => selected !== path)
+          : [...paths, path],
+      );
+      lastSelectedPath.current = path;
+    } else {
+      setSelectedPaths([path]);
+      lastSelectedPath.current = path;
+    }
+  }
+
+  function toggleFileSelection(path: string, checked: boolean) {
+    setSelectedPaths((paths) => {
+      if (checked) {
+        return paths.includes(path) ? paths : [...paths, path];
+      }
+      return paths.filter((selected) => selected !== path);
+    });
+    lastSelectedPath.current = path;
+  }
+
   async function removeFile(path: string) {
     setProject(await invoke<ProjectView>("remove_file", { path }));
+    setSelectedPaths((paths) => paths.filter((selected) => selected !== path));
+  }
+
+  async function removeSelectedFiles() {
+    if (selectedPaths.length === 0) return;
+    const paths = selectedPaths;
+    setProject(await invoke<ProjectView>("remove_files", { paths }));
+    setSelectedPaths([]);
+    lastSelectedPath.current = null;
+  }
+
+  async function patchSelectedFileOptions(patch: Partial<FileOptions>) {
+    if (selectedPaths.length === 0) return;
+    setProject(
+      await invoke<ProjectView>("update_file_options", {
+        paths: selectedPaths,
+        patch,
+      }),
+    );
   }
 
   async function moveFile(path: string, op: "up" | "down" | "top" | "bottom") {
@@ -1125,21 +1375,47 @@ export default function App() {
   async function previewBundle() {
     setExportMenuOpen(false);
     setStatusMsg("");
+    if (previewHtml !== null) {
+      setPreviewHtml(null);
+      return;
+    }
     await runPreview(false);
   }
 
   async function onRowDrop(index: number) {
+    const moving = dragPaths.current;
     const from = dragIndex.current;
     dragIndex.current = null;
+    dragPaths.current = [];
     setDropTarget(null);
-    if (from === null || from === index) return;
-    const next = [...project.files];
-    const [moved] = next.splice(from, 1);
-    next.splice(index, 0, moved);
-    setProject({ ...project, files: next }); // optimistic
+    if (from === null || moving.length === 0) return;
+    const target = project.files[index]?.path;
+    const movingSet = new Set(moving);
+    if (!target || movingSet.has(target)) return;
+    const rowsByPath = new Map(project.files.map((file) => [file.path, file]));
+    const remaining = project.files
+      .map((file) => file.path)
+      .filter((path) => !movingSet.has(path));
+    const insertAt = remaining.indexOf(target);
+    if (insertAt < 0) return;
+    const nextPaths = [
+      ...remaining.slice(0, insertAt),
+      ...moving,
+      ...remaining.slice(insertAt),
+    ];
+    const nextFiles = nextPaths
+      .map((path) => rowsByPath.get(path))
+      .filter((file): file is FileRow => Boolean(file));
+    if (
+      nextFiles.map((file) => file.path).join("\0") ===
+      project.files.map((file) => file.path).join("\0")
+    ) {
+      return;
+    }
+    setProject({ ...project, files: nextFiles }); // optimistic
     setProject(
       await invoke<ProjectView>("set_order", {
-        paths: next.map((f) => f.path),
+        paths: nextPaths,
       }),
     );
   }
@@ -1176,6 +1452,20 @@ export default function App() {
     await getCurrentWindow().destroy();
   }
 
+  const selectedPathSet = useMemo(
+    () => new Set(selectedPaths),
+    [selectedPaths],
+  );
+  const selectedFiles = useMemo(
+    () => project.files.filter((file) => selectedPathSet.has(file.path)),
+    [project.files, selectedPathSet],
+  );
+  const allFilesSelected =
+    project.files.length > 0 && selectedFiles.length === project.files.length;
+  const someFilesSelected =
+    selectedFiles.length > 0 && selectedFiles.length < project.files.length;
+  const canToggleProperties =
+    project.files.length > 0 && previewHtml === null;
   const draft = settingsDraft;
   const pendingProblem = pendingProblemAction;
 
@@ -1195,15 +1485,6 @@ export default function App() {
           onClick={() => setSettingsDraft(project.settings)}
         >
           ⓘ
-        </button>
-        <button
-          className="preview-btn"
-          title="Preview Bundle"
-          aria-label="Preview Bundle"
-          onClick={() => void previewBundle()}
-          disabled={project.files.length === 0}
-        >
-          <img src={previewIconUrl} alt="" draggable={false} />
         </button>
         <div className="export-split">
           <button
@@ -1232,6 +1513,28 @@ export default function App() {
             </ul>
           )}
         </div>
+        <button
+          className={`preview-btn${previewHtml !== null ? " active" : ""}`}
+          title={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
+          aria-label={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
+          aria-pressed={previewHtml !== null}
+          onClick={() => void previewBundle()}
+          disabled={project.files.length === 0}
+        >
+          <img src={previewIconUrl} alt="" draggable={false} />
+        </button>
+        <button
+          className={`panel-toggle${
+            canToggleProperties && propertiesOpen ? " active" : ""
+          }`}
+          title="File Properties"
+          aria-label="Toggle File Properties"
+          aria-pressed={canToggleProperties && propertiesOpen}
+          disabled={!canToggleProperties}
+          onClick={() => setPropertiesOpen((open) => !open)}
+        >
+          <span className="side-panel-icon" aria-hidden="true" />
+        </button>
       </header>
 
       {previewHtml !== null ? (
@@ -1244,69 +1547,136 @@ export default function App() {
           Use “Add Files…” or “Add Folder…” to get started
         </div>
       ) : (
-        <div className="file-table-wrap">
-          <div className="file-table" role="table">
-            <div className="ft-row ft-header" role="row">
-              <div className="col-name" role="columnheader">
-                Name
+        <div className="workarea">
+          <div className="file-table-wrap">
+            <div className="file-table" role="table">
+              <div className="ft-row ft-header" role="row">
+                <div className="col-select" role="columnheader">
+                  <MixedCheckbox
+                    value={
+                      allFilesSelected
+                        ? true
+                        : someFilesSelected
+                          ? "mixed"
+                          : false
+                    }
+                    ariaLabel="Select all files"
+                    onChange={(checked) => {
+                      const paths = checked
+                        ? project.files.map((file) => file.path)
+                        : [];
+                      setSelectedPaths(paths);
+                      lastSelectedPath.current =
+                        paths.length > 0 ? paths[paths.length - 1] : null;
+                    }}
+                  />
+                </div>
+                <div className="col-name" role="columnheader">
+                  Name
+                </div>
+                <div className="col-folder" role="columnheader">
+                  Folder
+                </div>
+                <div className="col-size" role="columnheader">
+                  Size
+                </div>
               </div>
-              <div className="col-folder" role="columnheader">
-                Folder
-              </div>
-              <div className="col-size" role="columnheader">
-                Size
-              </div>
-            </div>
-            {project.files.map((file, i) => (
-              <div
-                key={file.path}
-                role="row"
-                className={`ft-row${dropTarget === i ? " drop-target" : ""}${
-                  file.size === null ? " missing" : ""
-                }`}
-                draggable
-                onDragStart={() => {
-                  dragIndex.current = i;
-                }}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDropTarget(i);
-                }}
-                onDragLeave={() => setDropTarget((t) => (t === i ? null : t))}
-                onDragEnd={() => setDropTarget(null)}
-                onDrop={() => void onRowDrop(i)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ x: e.clientX, y: e.clientY, path: file.path });
-                }}
-              >
-                <div
-                  className="col-name"
-                  role="cell"
-                  title={
-                    file.size === null
-                      ? "File is missing or unreadable"
-                      : undefined
-                  }
-                >
-                  <button
-                    className="remove-btn"
-                    title="Remove from bundle"
-                    onClick={() => void removeFile(file.path)}
+              {project.files.map((file, i) => {
+                const selected = selectedPathSet.has(file.path);
+                return (
+                  <div
+                    key={file.path}
+                    role="row"
+                    className={`ft-row${selected ? " selected" : ""}${
+                      dropTarget === i ? " drop-target" : ""
+                    }${file.size === null ? " missing" : ""}`}
+                    draggable
+                    onClick={(e) => selectFileRow(file.path, e)}
+                    onDragStart={() => {
+                      dragIndex.current = i;
+                      if (selected) {
+                        dragPaths.current = project.files
+                          .filter((row) => selectedPathSet.has(row.path))
+                          .map((row) => row.path);
+                      } else {
+                        dragPaths.current = [file.path];
+                        setSelectedPaths([file.path]);
+                        lastSelectedPath.current = file.path;
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDropTarget(i);
+                    }}
+                    onDragLeave={() =>
+                      setDropTarget((target) => (target === i ? null : target))
+                    }
+                    onDragEnd={() => {
+                      dragPaths.current = [];
+                      setDropTarget(null);
+                    }}
+                    onDrop={() => void onRowDrop(i)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (!selected) {
+                        setSelectedPaths([file.path]);
+                        lastSelectedPath.current = file.path;
+                      }
+                      setMenu({ x: e.clientX, y: e.clientY, path: file.path });
+                    }}
                   >
-                    ✕
-                  </button>
-                  {file.name}
-                </div>
-                <div className="col-folder" role="cell" title={file.folder}>
-                  {file.folder}
-                </div>
-                <div className="col-size" role="cell">
-                  {formatSize(file.size)}
-                </div>
-              </div>
-            ))}
+                    <div
+                      className="col-select"
+                      role="cell"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MixedCheckbox
+                        value={selected}
+                        ariaLabel={`Select ${file.name}`}
+                        onChange={(checked) =>
+                          toggleFileSelection(file.path, checked)
+                        }
+                      />
+                    </div>
+                    <div
+                      className="col-name"
+                      role="cell"
+                      title={
+                        file.size === null
+                          ? "File is missing or unreadable"
+                          : undefined
+                      }
+                    >
+                      <button
+                        className="remove-btn"
+                        title="Remove from bundle"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void removeFile(file.path);
+                        }}
+                      >
+                        ✕
+                      </button>
+                      {file.name}
+                    </div>
+                    <div className="col-folder" role="cell" title={file.folder}>
+                      {file.folder}
+                    </div>
+                    <div className="col-size" role="cell">
+                      {formatSize(file.size)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+          {propertiesOpen && (
+            <FilePropertiesPanel
+              selectedFiles={selectedFiles}
+              onPatch={(patch) => void patchSelectedFileOptions(patch)}
+              onRemoveSelected={() => void removeSelectedFiles()}
+            />
+          )}
         </div>
       )}
 
@@ -1321,9 +1691,15 @@ export default function App() {
             Move to Bottom
           </li>
           <li className="separator" />
-          <li onClick={() => void removeFile(menu.path)}>
-            Remove File from Bundle
-          </li>
+          {selectedPathSet.has(menu.path) && selectedPaths.length > 1 ? (
+            <li onClick={() => void removeSelectedFiles()}>
+              Remove Selected Files
+            </li>
+          ) : (
+            <li onClick={() => void removeFile(menu.path)}>
+              Remove File from Bundle
+            </li>
+          )}
         </ul>
       )}
 
