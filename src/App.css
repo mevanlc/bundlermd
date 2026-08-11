@@ -188,6 +188,7 @@ button:disabled {
   justify-content: center;
   width: 2.2rem;
   height: 2.2rem;
+  margin-left: auto;
   padding: 0;
 }
 
@@ -223,7 +224,6 @@ button:disabled {
   justify-content: center;
   width: 2.2rem;
   height: 2.2rem;
-  margin-left: auto;
   padding: 0;
 }
 

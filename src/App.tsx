@@ -1686,6 +1686,16 @@ export default function App() {
         >
           ⓘ
         </button>
+        <button
+          className={`preview-btn${previewHtml !== null ? " active" : ""}`}
+          title={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
+          aria-label={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
+          aria-pressed={previewHtml !== null}
+          onClick={() => void previewBundle()}
+          disabled={project.files.length === 0}
+        >
+          <img src={previewIconUrl} alt="" draggable={false} />
+        </button>
         <div className="export-split">
           <button
             className="export-btn export-primary"
@@ -1713,16 +1723,6 @@ export default function App() {
             </ul>
           )}
         </div>
-        <button
-          className={`preview-btn${previewHtml !== null ? " active" : ""}`}
-          title={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
-          aria-label={previewHtml !== null ? "Close Preview" : "Preview Bundle"}
-          aria-pressed={previewHtml !== null}
-          onClick={() => void previewBundle()}
-          disabled={project.files.length === 0}
-        >
-          <img src={previewIconUrl} alt="" draggable={false} />
-        </button>
         <button
           className={`panel-toggle${
             canToggleProperties && propertiesOpen ? " active" : ""
