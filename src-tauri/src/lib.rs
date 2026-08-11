@@ -75,10 +75,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");
-    app.run(|app, event| {
+    app.run(|_app, _event| {
         #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
-        if let tauri::RunEvent::Opened { urls } = event {
-            state::queue_open_project_paths(app, state::open_project_paths_from_urls(urls));
+        if let tauri::RunEvent::Opened { urls } = _event {
+            state::queue_open_project_paths(_app, state::open_project_paths_from_urls(urls));
         }
     });
 }
