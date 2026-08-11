@@ -149,6 +149,8 @@ pub enum MoveOp {
 pub struct FileOptionsPatch {
     include_code_fence: Option<bool>,
     include_in_toc: Option<bool>,
+    remove_markdown_links: Option<bool>,
+    remove_markdown_link_titles: Option<bool>,
     header_style: Option<HeaderStyle>,
     custom_header: Option<String>,
 }
@@ -160,6 +162,12 @@ impl FileOptionsPatch {
         }
         if let Some(value) = self.include_in_toc {
             options.include_in_toc = value;
+        }
+        if let Some(value) = self.remove_markdown_links {
+            options.remove_markdown_links = value;
+        }
+        if let Some(value) = self.remove_markdown_link_titles {
+            options.remove_markdown_link_titles = value;
         }
         if let Some(value) = self.header_style {
             options.header_style = value;
@@ -909,6 +917,16 @@ fn generate_bundle_with_title(
                     && settings.add_detected_language_tag_to_code_fences)
                     .then(|| crate::lang::fence_tag(path, &content))
                     .flatten();
+                let content = if entry.options.remove_markdown_links
+                    && crate::lang::is_markdown(path, &content)
+                {
+                    crate::markdown::remove_links(
+                        &content,
+                        entry.options.remove_markdown_link_titles,
+                    )
+                } else {
+                    content
+                };
                 bundle_files.push(BundleFile {
                     display,
                     fence_tag,

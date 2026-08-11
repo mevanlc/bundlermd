@@ -37,6 +37,8 @@ type HeaderStyle = "filename" | "none" | "custom";
 interface FileOptions {
   include_code_fence: boolean;
   include_in_toc: boolean;
+  remove_markdown_links: boolean;
+  remove_markdown_link_titles: boolean;
   header_style: HeaderStyle;
   custom_header: string;
 }
@@ -479,6 +481,14 @@ function FilePropertiesPanel({
     selectedFiles,
     (file) => file.options.include_in_toc,
   );
+  const removeMarkdownLinks = mixedValue(
+    selectedFiles,
+    (file) => file.options.remove_markdown_links,
+  );
+  const removeMarkdownLinkTitles = mixedValue(
+    selectedFiles,
+    (file) => file.options.remove_markdown_link_titles,
+  );
   const headerStyle = mixedValue(
     selectedFiles,
     (file) => file.options.header_style,
@@ -489,6 +499,7 @@ function FilePropertiesPanel({
   );
   const selectedCount = selectedFiles.length;
   const customEnabled = headerStyle === "custom";
+  const removeLinkTitlesDisabled = removeMarkdownLinks === false;
 
   return (
     <aside className="properties-panel">
@@ -519,6 +530,41 @@ function FilePropertiesPanel({
               onChange={(checked) => onPatch({ include_in_toc: checked })}
             />
             Add to Table of Contents
+          </label>
+
+          <label className="mixed-radio">
+            <MixedCheckbox
+              value={
+                removeMarkdownLinks === "mixed"
+                  ? "mixed"
+                  : removeMarkdownLinks === true
+              }
+              ariaLabel="Remove Markdown links"
+              onChange={(checked) =>
+                onPatch({ remove_markdown_links: checked })
+              }
+            />
+            Remove Markdown links
+          </label>
+
+          <label
+            className={`mixed-radio nested-property${
+              removeLinkTitlesDisabled ? " disabled" : ""
+            }`}
+          >
+            <MixedCheckbox
+              value={
+                removeMarkdownLinkTitles === "mixed"
+                  ? "mixed"
+                  : removeMarkdownLinkTitles === true
+              }
+              ariaLabel="Remove Markdown link titles too"
+              disabled={removeLinkTitlesDisabled}
+              onChange={(checked) =>
+                onPatch({ remove_markdown_link_titles: checked })
+              }
+            />
+            … and link titles
           </label>
 
           <label className="field">

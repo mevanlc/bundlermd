@@ -6,7 +6,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 
 - **Add files** via dialog, drag-and-drop from the desktop, or folder import (shallow or recursive), with a preview before committing
 - **Reorder** by drag-and-drop or right-click context menu
-- **Multi-select file properties**: bulk-edit code fencing, TOC inclusion, and file heading style
+- **Multi-select file properties**: bulk-edit code fencing, TOC inclusion, Markdown link removal, and file heading style
 - **Project files** (`.bmd`) save and restore the file list, settings, and last export path
 - **Smart Relative paths** in the bundle: files under the project folder are shown relative to it; others get the shortest unambiguous name
 - **Size limits**: configurable per-file and total caps; oversized files are reported and skipped, not silently dropped
@@ -92,6 +92,8 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
       "options": {
         "include_code_fence": true,
         "include_in_toc": true,
+        "remove_markdown_links": false,
+        "remove_markdown_link_titles": false,
         "header_style": "filename",
         "custom_header": ""
       }
@@ -101,6 +103,8 @@ macOS code-signing and notarization require these repository secrets: `APPLE_CER
       "options": {
         "include_code_fence": false,
         "include_in_toc": true,
+        "remove_markdown_links": true,
+        "remove_markdown_link_titles": false,
         "header_style": "custom",
         "custom_header": "Helper module"
       }

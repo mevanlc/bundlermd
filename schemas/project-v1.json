@@ -53,6 +53,16 @@
           "default": true,
           "description": "Whether the file appears in the bundle Table of Contents."
         },
+        "remove_markdown_links": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether parser-recognized Markdown links in the source file are replaced by their label text."
+        },
+        "remove_markdown_link_titles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether link label text is also removed when remove_markdown_links is enabled."
+        },
         "header_style": {
           "type": "string",
           "enum": ["filename", "none", "custom"],

@@ -671,6 +671,14 @@ body.reordering-files .ft-row:not(.ft-header) {
   margin: 0.3rem 0;
 }
 
+.nested-property {
+  margin-left: 1.4rem;
+}
+
+.nested-property.disabled {
+  color: #8a8a8e;
+}
+
 .remove-selected-btn {
   width: 100%;
   margin-top: 0.35rem;

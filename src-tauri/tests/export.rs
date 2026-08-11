@@ -251,6 +251,8 @@ fn export_applies_per_file_representation_options() {
             options: FileOptions {
                 include_code_fence: false,
                 include_in_toc: false,
+                remove_markdown_links: false,
+                remove_markdown_link_titles: false,
                 header_style: HeaderStyle::Custom,
                 custom_header: "Intro".into(),
             },
@@ -281,4 +283,48 @@ fn export_applies_per_file_representation_options() {
     assert!(!markdown.contains("```text\nalpha\n```"));
     assert!(!markdown.contains("## File 2: b.txt"));
     assert!(markdown.contains("```text\nbeta\n```\n"));
+}
+
+#[test]
+fn export_removes_only_source_markdown_links() {
+    let dir = tempfile::tempdir().unwrap();
+    let markdown_path = dir.path().join("linked.md");
+    let text_path = dir.path().join("linked.txt");
+    std::fs::write(&markdown_path, "See [the source](https://example.com).\n").unwrap();
+    std::fs::write(&text_path, "Keep [this syntax](https://example.com).\n").unwrap();
+
+    let files = vec![
+        ProjectEntry {
+            path: markdown_path,
+            options: FileOptions {
+                remove_markdown_links: true,
+                ..Default::default()
+            },
+        },
+        ProjectEntry {
+            path: text_path,
+            options: FileOptions {
+                remove_markdown_links: true,
+                remove_markdown_link_titles: true,
+                ..Default::default()
+            },
+        },
+    ];
+    let settings = ProjectSettings {
+        toc_links: true,
+        ..Default::default()
+    };
+    let (markdown, problems) = generate_bundle(
+        &files,
+        &settings,
+        None,
+        Path::new("/tmp/out.md"),
+        Limits::default(),
+    );
+
+    assert!(problems.is_empty());
+    assert!(markdown.contains("- [linked.md](#file-1-linkedmd)\n"));
+    assert!(markdown.contains("See the source.\n"));
+    assert!(!markdown.contains("See [the source](https://example.com)."));
+    assert!(markdown.contains("Keep [this syntax](https://example.com).\n"));
 }

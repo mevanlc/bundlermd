@@ -61,6 +61,8 @@ pub enum HeaderStyle {
 pub struct FileOptions {
     pub include_code_fence: bool,
     pub include_in_toc: bool,
+    pub remove_markdown_links: bool,
+    pub remove_markdown_link_titles: bool,
     pub header_style: HeaderStyle,
     pub custom_header: String,
 }
@@ -70,6 +72,8 @@ impl Default for FileOptions {
         Self {
             include_code_fence: true,
             include_in_toc: true,
+            remove_markdown_links: false,
+            remove_markdown_link_titles: false,
             header_style: HeaderStyle::Filename,
             custom_header: String::new(),
         }
@@ -227,6 +231,8 @@ mod tests {
                     options: FileOptions {
                         include_code_fence: false,
                         include_in_toc: false,
+                        remove_markdown_links: true,
+                        remove_markdown_link_titles: true,
                         header_style: HeaderStyle::Custom,
                         custom_header: "Custom heading".into(),
                     },

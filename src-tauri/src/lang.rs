@@ -10,6 +10,10 @@ pub fn fence_tag(path: &Path, content: &str) -> Option<String> {
     detect(path, content).and_then(tag_for)
 }
 
+pub fn is_markdown(path: &Path, content: &str) -> bool {
+    detect(path, content).is_some_and(|language| language.name == "Markdown")
+}
+
 fn detect(path: &Path, content: &str) -> Option<DetectedLanguage> {
     let by_filename = detect_language_by_filename(path).ok()?;
     if by_filename.len() == 1 {
@@ -49,7 +53,7 @@ fn tag_for(lang: DetectedLanguage) -> Option<String> {
 mod tests {
     use std::path::Path;
 
-    use super::fence_tag;
+    use super::{fence_tag, is_markdown};
 
     #[test]
     fn detects_unambiguous_extensions() {
@@ -107,5 +111,11 @@ mod tests {
     #[test]
     fn leaves_unknown_extensions_untagged() {
         assert_eq!(fence_tag(Path::new("file.unknownext"), "content"), None);
+    }
+
+    #[test]
+    fn identifies_markdown_sources() {
+        assert!(is_markdown(Path::new("README.md"), "# Read me\n"));
+        assert!(!is_markdown(Path::new("notes.txt"), "[link](target)\n"));
     }
 }
