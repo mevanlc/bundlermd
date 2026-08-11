@@ -13,7 +13,6 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Checkbox as PrimeCheckbox } from "@primereact/ui/checkbox";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -445,22 +444,44 @@ function MixedCheckbox({
   ariaLabel: string;
   disabled?: boolean;
 }) {
+  const checked = value === true;
+  const indeterminate = value === "mixed";
+
   return (
-    <PrimeCheckbox.Root
+    <span
       className="mixed-checkbox"
-      checked={value === true}
-      indeterminate={value === "mixed"}
-      disabled={disabled}
-      ariaLabel={ariaLabel}
-      onCheckedChange={(event: { checked: boolean }) =>
-        onChange(Boolean(event.checked))
-      }
+      data-checked={checked ? "" : undefined}
+      data-indeterminate={indeterminate ? "" : undefined}
+      data-disabled={disabled ? "" : undefined}
     >
-      <PrimeCheckbox.Box className="mixed-checkbox-box">
-        <PrimeCheckbox.Indicator className="mixed-checkbox-indicator mixed-checkbox-indicator-check" />
-        <PrimeCheckbox.Indicator className="mixed-checkbox-indicator mixed-checkbox-indicator-indeterminate" />
-      </PrimeCheckbox.Box>
-    </PrimeCheckbox.Root>
+      <input
+        ref={(input) => {
+          if (input) input.indeterminate = indeterminate;
+        }}
+        className="mixed-checkbox-input"
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-checked={indeterminate ? "mixed" : checked}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span
+        className="mixed-checkbox-box"
+        data-checked={checked ? "" : undefined}
+        data-indeterminate={indeterminate ? "" : undefined}
+        aria-hidden="true"
+      >
+        <span
+          className="mixed-checkbox-indicator mixed-checkbox-indicator-check"
+          data-checked={checked ? "" : undefined}
+        />
+        <span
+          className="mixed-checkbox-indicator mixed-checkbox-indicator-indeterminate"
+          data-indeterminate={indeterminate ? "" : undefined}
+        />
+      </span>
+    </span>
   );
 }
 
