@@ -661,9 +661,6 @@ pub fn new_window(app: tauri::AppHandle, store: State<'_, GlobalStore>) -> Resul
     let window = tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::default())
         .title("BundlerMD")
         .inner_size(1024.0, 800.0)
-        // Same rationale as dragDropEnabled: false in tauri.conf.json — the
-        // OS drop handler fights HTML5 row drag-reorder.
-        .disable_drag_drop_handler()
         .build()
         .map_err(|e| format!("could not open window: {e}"))?;
     let _ = window.set_theme(store.settings().theme.native());

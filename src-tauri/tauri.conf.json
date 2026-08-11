@@ -16,7 +16,7 @@
         "title": "BundlerMD",
         "width": 1024,
         "height": 800,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ],
     "security": {

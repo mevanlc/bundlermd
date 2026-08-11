@@ -13,10 +13,34 @@ body {
 }
 
 .app {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100vh;
   box-sizing: border-box;
+}
+
+.file-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 3px solid #4a90d9;
+  background: rgb(226 239 255 / 74%);
+  box-shadow: inset 0 0 0 5px rgb(255 255 255 / 76%);
+}
+
+.file-drop-overlay span {
+  padding: 0.8rem 1.1rem;
+  border: 1px solid #6d9dcc;
+  border-radius: 6px;
+  background: #fff;
+  color: #24527d;
+  font-size: 1.05rem;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 16%);
 }
 
 .menubar {
@@ -450,6 +474,15 @@ button:disabled {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: subgrid;
+}
+
+.ft-row:not(.ft-header) {
+  touch-action: none;
+}
+
+body.reordering-files,
+body.reordering-files .ft-row:not(.ft-header) {
+  cursor: grabbing;
 }
 
 .ft-row > div {
@@ -943,6 +976,18 @@ fieldset.field {
   .status {
     background: #2a2a2a;
     border-color: #3a3a3a;
+  }
+
+  .file-drop-overlay {
+    border-color: #79a5ce;
+    background: rgb(31 45 60 / 80%);
+    box-shadow: inset 0 0 0 5px rgb(22 22 24 / 76%);
+  }
+
+  .file-drop-overlay span {
+    border-color: #79a5ce;
+    background: #2c2c2e;
+    color: #dcecff;
   }
 
   .status {

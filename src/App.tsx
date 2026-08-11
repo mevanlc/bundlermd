@@ -15,6 +15,7 @@ import {
 } from "@tanstack/react-table";
 import { Checkbox as PrimeCheckbox } from "@primereact/ui/checkbox";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -65,6 +66,17 @@ interface Skipped {
 interface AddResult {
   project: ProjectView;
   skipped: Skipped[];
+}
+
+interface RowPointerDrag {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  sourceIndex: number;
+  sourcePath: string;
+  sourceWasSelected: boolean;
+  active: boolean;
+  targetIndex: number | null;
 }
 
 interface Problem {
@@ -930,11 +942,14 @@ export default function App() {
     (() => Promise<void>) | null
   >(null);
   const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const [externalDropActive, setExternalDropActive] = useState(false);
   // macOS convention is a bare document title in the titlebar (the app name
   // already lives in the menu bar); other platforms keep the app-name suffix.
   const [isMacOS, setIsMacOS] = useState(false);
   const dragIndex = useRef<number | null>(null);
   const dragPaths = useRef<string[]>([]);
+  const rowPointerDrag = useRef<RowPointerDrag | null>(null);
+  const suppressRowClick = useRef(false);
   const lastSelectedPath = useRef<string | null>(null);
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -989,11 +1004,23 @@ export default function App() {
       "app-settings-changed",
       (e) => setAppSettings(e.payload),
     );
+    const unlistenFileDrop = getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === "drop") {
+        setExternalDropActive(false);
+        if (event.payload.paths.length > 0) {
+          void addDroppedFiles(event.payload.paths);
+        }
+      } else {
+        setExternalDropActive(event.payload.type !== "leave");
+      }
+    });
     return () => {
       void unlistenClose.then((fn) => fn());
       void unlistenMenu.then((fn) => fn());
       void unlistenOpenProjects.then((fn) => fn());
       void unlistenAppSettings.then((fn) => fn());
+      void unlistenFileDrop.then((fn) => fn());
+      document.body.classList.remove("reordering-files");
     };
   }, []);
 
@@ -1092,6 +1119,14 @@ export default function App() {
     const picked = await open({ multiple: true, title: "Add Files to Bundle" });
     if (!picked || picked.length === 0) return;
     applyAddResult(await invoke<AddResult>("add_files", { paths: picked }));
+  }
+
+  async function addDroppedFiles(paths: string[]) {
+    try {
+      applyAddResult(await invoke<AddResult>("add_files", { paths }));
+    } catch (e) {
+      setStatusMsg(String(e));
+    }
   }
 
   async function browseFolder() {
@@ -1385,15 +1420,18 @@ export default function App() {
   async function onRowDrop(index: number) {
     const moving = dragPaths.current;
     const from = dragIndex.current;
+    const currentProject = projectRef.current;
     dragIndex.current = null;
     dragPaths.current = [];
     setDropTarget(null);
     if (from === null || moving.length === 0) return;
-    const target = project.files[index]?.path;
+    const target = currentProject.files[index]?.path;
     const movingSet = new Set(moving);
     if (!target || movingSet.has(target)) return;
-    const rowsByPath = new Map(project.files.map((file) => [file.path, file]));
-    const remaining = project.files
+    const rowsByPath = new Map(
+      currentProject.files.map((file) => [file.path, file]),
+    );
+    const remaining = currentProject.files
       .map((file) => file.path)
       .filter((path) => !movingSet.has(path));
     const insertAt = remaining.indexOf(target);
@@ -1408,16 +1446,106 @@ export default function App() {
       .filter((file): file is FileRow => Boolean(file));
     if (
       nextFiles.map((file) => file.path).join("\0") ===
-      project.files.map((file) => file.path).join("\0")
+      currentProject.files.map((file) => file.path).join("\0")
     ) {
       return;
     }
-    setProject({ ...project, files: nextFiles }); // optimistic
+    setProject({ ...currentProject, files: nextFiles }); // optimistic
     setProject(
       await invoke<ProjectView>("set_order", {
         paths: nextPaths,
       }),
     );
+  }
+
+  function beginRowPointerDrag(
+    event: React.PointerEvent<HTMLElement>,
+    index: number,
+    path: string,
+    selected: boolean,
+  ) {
+    if (!event.isPrimary || event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (
+      target.closest(
+        ".col-select, button, input, select, textarea, a, [contenteditable]",
+      )
+    ) {
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    rowPointerDrag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      sourceIndex: index,
+      sourcePath: path,
+      sourceWasSelected: selected,
+      active: false,
+      targetIndex: null,
+    };
+  }
+
+  function updateRowPointerDrag(event: React.PointerEvent<HTMLElement>) {
+    const drag = rowPointerDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.active) {
+      const distance = Math.hypot(
+        event.clientX - drag.startX,
+        event.clientY - drag.startY,
+      );
+      if (distance < 4) return;
+      drag.active = true;
+      dragIndex.current = drag.sourceIndex;
+      if (drag.sourceWasSelected) {
+        const selectedSet = new Set(selectedPaths);
+        dragPaths.current = projectRef.current.files
+          .filter((file) => selectedSet.has(file.path))
+          .map((file) => file.path);
+      } else {
+        dragPaths.current = [drag.sourcePath];
+        setSelectedPaths([drag.sourcePath]);
+        lastSelectedPath.current = drag.sourcePath;
+      }
+      document.body.classList.add("reordering-files");
+    }
+
+    event.preventDefault();
+    const target = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>("[data-file-index]");
+    const targetIndex = target ? Number(target.dataset.fileIndex) : null;
+    const nextTarget = Number.isInteger(targetIndex) ? targetIndex : null;
+    if (drag.targetIndex !== nextTarget) {
+      drag.targetIndex = nextTarget;
+      setDropTarget(nextTarget);
+    }
+  }
+
+  function finishRowPointerDrag(
+    event: React.PointerEvent<HTMLElement>,
+    cancelled = false,
+  ) {
+    const drag = rowPointerDrag.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    rowPointerDrag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.body.classList.remove("reordering-files");
+
+    if (!drag.active || cancelled || drag.targetIndex === null) {
+      dragIndex.current = null;
+      dragPaths.current = [];
+      setDropTarget(null);
+      return;
+    }
+
+    suppressRowClick.current = true;
+    window.setTimeout(() => {
+      suppressRowClick.current = false;
+    }, 0);
+    void onRowDrop(drag.targetIndex);
   }
 
   async function commitSettings() {
@@ -1471,6 +1599,11 @@ export default function App() {
 
   return (
     <main className="app" onContextMenu={(e) => e.preventDefault()}>
+      {externalDropActive && (
+        <div className="file-drop-overlay" role="status">
+          <span>Drop files to add</span>
+        </div>
+      )}
       {appSettings?.menu_rendering === "both" && (
         <MenuBar dispatch={dispatchMenu} />
       )}
@@ -1590,32 +1723,20 @@ export default function App() {
                     className={`ft-row${selected ? " selected" : ""}${
                       dropTarget === i ? " drop-target" : ""
                     }${file.size === null ? " missing" : ""}`}
-                    draggable
-                    onClick={(e) => selectFileRow(file.path, e)}
-                    onDragStart={() => {
-                      dragIndex.current = i;
-                      if (selected) {
-                        dragPaths.current = project.files
-                          .filter((row) => selectedPathSet.has(row.path))
-                          .map((row) => row.path);
-                      } else {
-                        dragPaths.current = [file.path];
-                        setSelectedPaths([file.path]);
-                        lastSelectedPath.current = file.path;
+                    data-file-index={i}
+                    onClick={(e) => {
+                      if (suppressRowClick.current) {
+                        e.preventDefault();
+                        return;
                       }
+                      selectFileRow(file.path, e);
                     }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setDropTarget(i);
-                    }}
-                    onDragLeave={() =>
-                      setDropTarget((target) => (target === i ? null : target))
+                    onPointerDown={(e) =>
+                      beginRowPointerDrag(e, i, file.path, selected)
                     }
-                    onDragEnd={() => {
-                      dragPaths.current = [];
-                      setDropTarget(null);
-                    }}
-                    onDrop={() => void onRowDrop(i)}
+                    onPointerMove={updateRowPointerDrag}
+                    onPointerUp={(e) => finishRowPointerDrag(e)}
+                    onPointerCancel={(e) => finishRowPointerDrag(e, true)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       if (!selected) {

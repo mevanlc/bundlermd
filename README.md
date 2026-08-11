@@ -4,7 +4,7 @@ Bundle multiple text files into a single Markdown document — useful for feedin
 
 ## Features
 
-- **Add files** via dialog or folder import (shallow or recursive), with a preview before committing
+- **Add files** via dialog, drag-and-drop from the desktop, or folder import (shallow or recursive), with a preview before committing
 - **Reorder** by drag-and-drop or right-click context menu
 - **Multi-select file properties**: bulk-edit code fencing, TOC inclusion, and file heading style
 - **Project files** (`.bmd`) save and restore the file list, settings, and last export path
