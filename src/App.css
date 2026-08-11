@@ -197,6 +197,10 @@ button:disabled {
   border-color: #9eb9d6;
 }
 
+.panel-toggle.active:hover:not(:disabled) {
+  background: #d7e6f7;
+}
+
 .side-panel-icon {
   position: relative;
   width: 1.15rem;
@@ -232,6 +236,11 @@ button:disabled {
   border-color: #6f91b0;
 }
 
+.preview-btn.active:hover:not(:disabled) {
+  background: #cfe0f5;
+  border-color: #9eb9d6;
+}
+
 .preview-btn img {
   width: 1.2rem;
   height: 1.2rem;
@@ -241,6 +250,12 @@ button:disabled {
 
 .preview-btn.active img {
   filter: none;
+}
+
+/* On hover the button goes light blue, so the icon needs the dark treatment
+   again to stay legible. */
+.preview-btn.active:hover:not(:disabled) img {
+  filter: brightness(0) saturate(100%) opacity(0.74);
 }
 
 .export-split {
@@ -1040,6 +1055,10 @@ fieldset.field {
     border-color: #577a9b;
   }
 
+  .panel-toggle.active:hover:not(:disabled) {
+    background: #46628a;
+  }
+
   .ft-header {
     background: #1f1f1f;
   }
@@ -1157,12 +1176,18 @@ fieldset.field {
     background: #33445c;
   }
 
-  .preview-btn img {
+  .preview-btn img,
+  .preview-btn.active:hover:not(:disabled) img {
     filter: none;
   }
 
   .preview-btn.active {
     background: #33445c;
+    border-color: #79a5ce;
+  }
+
+  .preview-btn.active:hover:not(:disabled) {
+    background: #46628a;
     border-color: #79a5ce;
   }
 
