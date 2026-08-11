@@ -528,8 +528,16 @@ body.reordering-files .ft-row:not(.ft-header) {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-left: 0.35rem !important;
-  padding-right: 0.25rem !important;
+  padding: 0 !important;
+}
+
+/* The visible box is small, so let the checkbox (and with it the invisible
+   input) fill the whole cell — the click target is the cell, not the
+   checkmark itself. */
+.col-select .mixed-checkbox {
+  align-self: stretch;
+  width: 100%;
+  height: auto;
 }
 
 .mixed-checkbox {
